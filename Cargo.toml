@@ -1,0 +1,17 @@
+[package]
+name = "dungeons-n-voxels"
+version = "0.1.0"
+edition = "2024"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[dependencies]
+bevy = { version = "0.19.1", features = ["dynamic_linking", "free_camera"] }
+log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
