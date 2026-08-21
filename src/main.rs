@@ -1,13 +1,14 @@
 mod camera;
-mod voxel;
-
+pub mod generation;
+use bevy::pbr::wireframe::WireframePlugin;
 use bevy::prelude::*;
 use camera::CameraPlugin;
-use voxel::VoxelPlugin;
+use generation::ChunkPlugin;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugins((CameraPlugin, VoxelPlugin))
+        .add_plugins(WireframePlugin::default())
+        .add_plugins((CameraPlugin, ChunkPlugin))
         .run();
 }
