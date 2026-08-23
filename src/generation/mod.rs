@@ -6,8 +6,9 @@ use bevy::pbr::wireframe::Wireframe;
 use bevy::prelude::*;
 use chunk::Chunk;
 use mesh::create_chunk_mesh;
+use std::collections::HashMap;
 use types::{CHUNK_X, CHUNK_Z};
-const RENDER_DISTANCE: i32 = 4;
+const RENDER_DISTANCE: i32 = 12;
 pub struct ChunkPlugin;
 
 impl Plugin for ChunkPlugin {
@@ -25,10 +26,34 @@ fn spawn_chunk(
         base_color: Color::WHITE,
         ..default()
     });
+
+    //generate every chunk and store it in a map
+    let mut chunks: HashMap<(i32, i32), Chunk> = HashMap::new();
+    for cx in 0..RENDER_DISTANCE {
+        for cz in 0..RENDER_DISTANCE{
+            chunks.insert((cx, cz), Chunk::generate());
+        }
+    }
+
     for cx in 0..RENDER_DISTANCE{
         for cz in 0..RENDER_DISTANCE{
-            let chunk = Chunk::generate();
-            let chunk_mesh = create_chunk_mesh(&chunk);
+            let chunk = &chunks[&(cx, cz)];
+            let own_flat = chunk.decompress();
+
+            let npx = chunks.get(&(cx + 1, cz)).map(|c| c.decompress());
+            let nnx = chunks.get(&(cx - 1, cz)).map(|c| c.decompress());
+            let npz = chunks.get(&(cx, cz + 1)).map(|c| c.decompress());
+            let nnz = chunks.get(&(cx, cz - 1)).map(|c| c.decompress());
+
+            let padded = Chunk::build_padded_chunk(
+                &own_flat,
+                npx.as_deref(),
+                nnx.as_deref(),
+                npz.as_deref(),
+                nnz.as_deref(),
+            );
+
+            let chunk_mesh = create_chunk_mesh(chunk, &padded);
 
             commands.spawn((
                 Mesh3d(meshes.add(chunk_mesh)),

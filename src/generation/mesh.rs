@@ -1,9 +1,8 @@
 use bevy::mesh::{Indices, Mesh};
 use bevy::render::render_resource::PrimitiveTopology;
 use bevy::asset::RenderAssetUsages;
-use bevy::reflect::array::Array;
 use super::types::*;
-use super::chunk::Chunk;
+use super::chunk::{padded_index, Chunk};
 
 const DIRECTIONS: [(i32, i32, i32); 6] = [
     ( 1, 0, 0), (-1,  0,  0),
@@ -35,19 +34,24 @@ const FACE_NORMALS: [[f32; 3]; 6] = [
     [ 0.0,  0.0, -1.0],   // -z
 ];
 
-#[inline(always)]
-fn is_transparent(flat: &[VoxelType], x: i32, y: i32, z: i32) -> bool {
-    // If neighbor coordinate is out of bounds, treat as Air so outer chunk faces render
-    if x < 0 || x >= CHUNK_X as i32 || y < 0 || y >= CHUNK_Y as i32 || z < 0 || z >= CHUNK_Z as i32 {
-        return true;
+// #[inline(always)]
+// fn is_transparent(flat: &[VoxelType], x: i32, y: i32, z: i32) -> bool {
+//     // If neighbor coordinate is out of bounds, treat as Air so outer chunk faces render
+//     if x < 0 || x >= CHUNK_X as i32 || y < 0 || y >= CHUNK_Y as i32 || z < 0 || z >= CHUNK_Z as i32 {
+//         return true;
+//     }
+//     Chunk::get_voxel(flat, x as usize, y as usize, z as usize) == VoxelType::Air
+// }
+
+fn is_transparent_padded(padded: &[VoxelType], px: i32, py: i32, pz: i32) -> bool {
+    if py < 0 || py >= CHUNK_Y as i32 {
+        return true; // still a real edge — no vertical neighbor chunks exist
     }
-    Chunk::get_voxel(flat, x as usize, y as usize, z as usize) == VoxelType::Air
+    padded[padded_index(px as usize, py as usize, pz as usize)] == VoxelType::Air
 }
 
-pub(crate) fn create_chunk_mesh(chunk: &Chunk) -> Mesh{
-    let voxels = chunk.decompress(); //Decompress to make O(1) face culling
+pub fn create_chunk_mesh(chunk: &Chunk, padded: &[VoxelType]) -> Mesh{
 
-    let max_faces = CHUNK_X * CHUNK_Y * CHUNK_Z * 6;
     let mut positions = Vec::new();
     let mut normals = Vec::new();
     let mut colors = Vec::new();
@@ -74,7 +78,7 @@ pub(crate) fn create_chunk_mesh(chunk: &Chunk) -> Mesh{
             let fz = z as f32;
 
             for (face_idx, (dx, dy, dz)) in DIRECTIONS.into_iter().enumerate() {
-                if is_transparent(&voxels, x as i32 + dx, y as i32 + dy, z as i32 + dz) {
+                if is_transparent_padded(padded, x as i32 + 1 + dx, y as i32 + dy, z as i32 + 1 + dz) {
                     let base = vertex_offset;
                     let v = FACE_VERTICES[face_idx];
 
