@@ -1,9 +1,41 @@
 use bevy::mesh::{Indices, Mesh};
 use bevy::render::render_resource::PrimitiveTopology;
 use bevy::asset::RenderAssetUsages;
+use bevy::reflect::array::Array;
 use super::types::*;
 use super::chunk::Chunk;
 
+const DIRECTIONS: [(i32, i32, i32); 6] = [
+    ( 1, 0, 0), (-1,  0,  0),
+    ( 0, 1, 0), ( 0, -1,  0),
+    ( 0, 0, 1), ( 0,  0, -1),
+];
+
+const FACE_VERTICES: [[[f32; 3]; 4]; 6] = [
+    // right (+x) -> Looking along -x: +z is left, -z is right
+    [[0.5, -0.5, 0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [0.5, 0.5, 0.5]],
+    // left (-x) -> Looking along +x: -z is left, +z is right
+    [[-0.5, -0.5, -0.5], [-0.5, -0.5, 0.5], [-0.5, 0.5, 0.5], [-0.5, 0.5, -0.5]],
+    // top (+y) -> Looking along -y: -x is left, +x is right
+    [[-0.5, 0.5, 0.5], [0.5, 0.5, 0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5]],
+    // bottom (-y) -> Looking along +y: -x is left, +x is right
+    [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, -0.5, 0.5], [-0.5, -0.5, 0.5]],
+    // back (+z) -> Looking along -z: +x is left, -x is right
+    [[0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5], [-0.5, -0.5, 0.5]],
+    // forward (-z) -> Looking along +z: -x is left, +x is right
+    [[-0.5, -0.5, -0.5], [-0.5, 0.5, -0.5], [0.5, 0.5, -0.5], [0.5, -0.5, -0.5]],
+];
+
+const FACE_NORMALS: [[f32; 3]; 6] = [
+    [ 1.0,  0.0,  0.0],   // +x
+    [-1.0,  0.0,  0.0],   // -x
+    [ 0.0,  1.0,  0.0],   // +y
+    [ 0.0, -1.0,  0.0],   // -y
+    [ 0.0,  0.0,  1.0],   // +z
+    [ 0.0,  0.0, -1.0],   // -z
+];
+
+#[inline(always)]
 fn is_transparent(flat: &[VoxelType], x: i32, y: i32, z: i32) -> bool {
     // If neighbor coordinate is out of bounds, treat as Air so outer chunk faces render
     if x < 0 || x >= CHUNK_X as i32 || y < 0 || y >= CHUNK_Y as i32 || z < 0 || z >= CHUNK_Z as i32 {
@@ -15,82 +47,61 @@ fn is_transparent(flat: &[VoxelType], x: i32, y: i32, z: i32) -> bool {
 pub(crate) fn create_chunk_mesh(chunk: &Chunk) -> Mesh{
     let voxels = chunk.decompress(); //Decompress to make O(1) face culling
 
+    let max_faces = CHUNK_X * CHUNK_Y * CHUNK_Z * 6;
     let mut positions = Vec::new();
     let mut normals = Vec::new();
     let mut colors = Vec::new();
     let mut indices = Vec::new();
     let mut vertex_offset: u32 = 0;
 
-    let directions = [
-        ( 1,  0,  0), (-1,  0,  0),
-        ( 0,  1,  0), ( 0, -1,  0),
-        ( 0,  0,  1), ( 0,  0, -1),
-    ];
-
-    let face_vertices: [[[f32; 3]; 4]; 6] = [
-        // right (+x) -> Looking along -x: +z is left, -z is right
-        [[0.5, -0.5, 0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [0.5, 0.5, 0.5]],
-        // left (-x) -> Looking along +x: -z is left, +z is right
-        [[-0.5, -0.5, -0.5], [-0.5, -0.5, 0.5], [-0.5, 0.5, 0.5], [-0.5, 0.5, -0.5]],
-        // top (+y) -> Looking along -y: -x is left, +x is right
-        [[-0.5, 0.5, 0.5], [0.5, 0.5, 0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5]],
-        // bottom (-y) -> Looking along +y: -x is left, +x is right
-        [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, -0.5, 0.5], [-0.5, -0.5, 0.5]],
-        // back (+z) -> Looking along -z: +x is left, -x is right
-        [[0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5], [-0.5, -0.5, 0.5]],
-        // forward (-z) -> Looking along +z: -x is left, +x is right
-        [[-0.5, -0.5, -0.5], [-0.5, 0.5, -0.5], [0.5, 0.5, -0.5], [0.5, -0.5, -0.5]],
-    ];
-
-    let face_normals: [[f32; 3]; 6] = [
-        [ 1.0,  0.0,  0.0],   // +x
-        [-1.0,  0.0,  0.0],   // -x
-        [ 0.0,  1.0,  0.0],   // +y
-        [ 0.0, -1.0,  0.0],   // -y
-        [ 0.0,  0.0,  1.0],   // +z
-        [ 0.0,  0.0, -1.0],   // -z
-    ];
-
-    let face_tris = [0_u32, 1, 2, 0, 2, 3];
-
     let mut current_idx: usize = 0;
     for run in &chunk.runs {
+        let run_len = run.length as usize;
         if run.value == VoxelType::Air {
-            current_idx += run.length as usize;
+            current_idx += run_len;
             continue;
         }
 
         let color = run.value.face_color();
 
-        for _ in 0..run.length{
-            let y = current_idx % CHUNK_Y;
-            let z = (current_idx / CHUNK_Y) % CHUNK_Z;
-            let x = current_idx / (CHUNK_Y * CHUNK_Z);
+        let mut y = current_idx % CHUNK_Y;
+        let mut z = (current_idx / CHUNK_Y) % CHUNK_Z;
+        let mut x = current_idx / (CHUNK_Y * CHUNK_Z);
 
+        for _ in 0..run_len {
             let fx = x as f32;
             let fy = y as f32;
             let fz = z as f32;
 
-            for (face_idx, (dx, dy, dz)) in directions.iter().enumerate() {
+            for (face_idx, (dx, dy, dz)) in DIRECTIONS.into_iter().enumerate() {
                 if is_transparent(&voxels, x as i32 + dx, y as i32 + dy, z as i32 + dz) {
                     let base = vertex_offset;
+                    let v = FACE_VERTICES[face_idx];
 
-                    // push the 4 vertices of this face
-                    for j in 0..4 {
-                        let v = face_vertices[face_idx][j];
-                        positions.push([fx + v[0], fy + v[1], fz + v[2]]);
-                        normals.push(face_normals[face_idx]);
-                        colors.push(color);
-                    }
+                    positions.extend_from_slice(&[
+                        [fx + v[0][0], fy + v[0][1], fz + v[0][2]],
+                        [fx + v[1][0], fy + v[1][1], fz + v[1][2]],
+                        [fx + v[2][0], fy + v[2][1], fz + v[2][2]],
+                        [fx + v[3][0], fy + v[3][1], fz + v[3][2]],
+                    ]);
 
-                    for &idx in &face_tris {
-                        indices.push(base + idx);
-                    }
+                    normals.extend_from_slice(&[FACE_NORMALS[face_idx]; 4]);
+                    colors.extend_from_slice(&[color; 4]);
+                    indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
 
                     vertex_offset += 4;
                 }
             }
 
+            y += 1;
+            if y == CHUNK_Y {
+                y = 0;
+                z += 1;
+                if z == CHUNK_Z {
+                    z = 0;
+                    x += 1;
+                }
+            }
             current_idx += 1;
         }
     }
