@@ -1,6 +1,7 @@
 use super::types::*;
 
 const PADDED_X: usize = CHUNK_X + 2;
+const PADDED_Y: usize = CHUNK_Y + 2;
 const PADDED_Z: usize = CHUNK_Z + 2;
 
 #[derive(Debug)]
@@ -52,13 +53,13 @@ impl Chunk {
         neighbor_pos_z: Option<&[VoxelType]>,
         neighbor_neg_z: Option<&[VoxelType]>,
     ) -> Vec<VoxelType> {
-        let mut padded = vec![VoxelType::Air; PADDED_X * CHUNK_Y * PADDED_Z];
+        let mut padded = vec![VoxelType::Air; PADDED_X * PADDED_Y * PADDED_Z];
 
         for x in 0..CHUNK_X {
             for z in 0..CHUNK_Z {
                 for y in 0..CHUNK_Y {
                     let src = x * (CHUNK_Z * CHUNK_Y) + z * CHUNK_Y + y;
-                    padded[padded_index(x + 1, y, z + 1)] = own[src];
+                    padded[padded_index(x + 1, y + 1, z + 1)] = own[src];
                 }
             }
         }
@@ -67,7 +68,7 @@ impl Chunk {
             for z in 0..CHUNK_Z {
                 for y in 0..CHUNK_Y {
                     let src = 0 * (CHUNK_Z * CHUNK_Y) + z * CHUNK_Y + y;
-                    padded[padded_index(PADDED_X - 1, y, z + 1)] = neighbor[src];
+                    padded[padded_index(PADDED_X - 1, y + 1, z + 1)] = neighbor[src];
                 }
             }
         }
@@ -76,7 +77,7 @@ impl Chunk {
             for z in 0..CHUNK_Z {
                 for y in 0..CHUNK_Y {
                     let src = (CHUNK_X - 1) * (CHUNK_Z * CHUNK_Y) + z * CHUNK_Y + y;
-                    padded[padded_index(0, y, z + 1)] = neighbor[src];
+                    padded[padded_index(0, y + 1, z + 1)] = neighbor[src];
                 }
             }
         }
@@ -85,7 +86,7 @@ impl Chunk {
             for x in 0..CHUNK_X {
                 for y in 0..CHUNK_Y {
                     let src = x * (CHUNK_Z * CHUNK_Y) + 0 * CHUNK_Y + y;
-                    padded[padded_index(x + 1, y, PADDED_Z - 1)] = neighbor[src];
+                    padded[padded_index(x + 1, y + 1, PADDED_Z - 1)] = neighbor[src];
                 }
             }
         }
@@ -94,7 +95,7 @@ impl Chunk {
             for x in 0..CHUNK_X {
                 for y in 0..CHUNK_Y {
                     let src = x * (CHUNK_Z * CHUNK_Y) + (CHUNK_Z - 1) * CHUNK_Y + y;
-                    padded[padded_index(x + 1, y, 0)] = neighbor[src];
+                    padded[padded_index(x + 1, y + 1, 0)] = neighbor[src];
                 }
             }
         }
@@ -106,5 +107,5 @@ impl Chunk {
     }
 }
 pub fn padded_index(px: usize, py: usize, pz: usize) -> usize {
-    px * (PADDED_Z * CHUNK_Y) + pz * CHUNK_Y + py
+    px * (PADDED_Z * PADDED_Y) + pz * PADDED_Y + py
 }

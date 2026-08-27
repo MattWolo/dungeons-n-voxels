@@ -8,7 +8,7 @@ use chunk::Chunk;
 use mesh::create_chunk_mesh;
 use std::collections::HashMap;
 use types::{CHUNK_X, CHUNK_Z};
-const RENDER_DISTANCE: i32 = 12;
+const RENDER_DISTANCE: i32 = 8;
 pub struct ChunkPlugin;
 
 impl Plugin for ChunkPlugin {
