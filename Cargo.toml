@@ -12,6 +12,7 @@ opt-level = 3
 [dependencies]
 bevy = { version = "0.19.1", features = ["dynamic_linking", "free_camera"] }
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+futures-lite = "2.6.1"
 
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld.exe"

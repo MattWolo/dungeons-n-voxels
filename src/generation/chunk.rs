@@ -1,15 +1,16 @@
 use super::types::*;
 
-const PADDED_X: usize = CHUNK_X + 2;
-const PADDED_Y: usize = CHUNK_Y + 2;
-const PADDED_Z: usize = CHUNK_Z + 2;
+pub const PADDED_X: usize = CHUNK_X + 2;
+pub const PADDED_Y: usize = CHUNK_Y + 2;
+pub const PADDED_Z: usize = CHUNK_Z + 2;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Run {
     pub value: VoxelType,
     pub length: u16
 }
 
+#[derive(Debug, Clone)]
 pub struct Chunk{
     pub runs: Vec<Run>
 }
@@ -45,15 +46,23 @@ impl Chunk {
         }
         flat
     }
-
+    pub fn decompress_into(&self, output: &mut Vec<VoxelType>){
+        output.clear();
+        output.reserve(CHUNK_VOLUME);
+        for run in &self.runs{
+            output.extend(std::iter::repeat(run.value).take(run.length as usize));
+        }
+    }
     pub fn build_padded_chunk(
+        padded: &mut [VoxelType],
         own: &[VoxelType],
         neighbor_pos_x: Option<&[VoxelType]>,
         neighbor_neg_x: Option<&[VoxelType]>,
         neighbor_pos_z: Option<&[VoxelType]>,
         neighbor_neg_z: Option<&[VoxelType]>,
-    ) -> Vec<VoxelType> {
-        let mut padded = vec![VoxelType::Air; PADDED_X * PADDED_Y * PADDED_Z];
+    ) {
+        //let mut padded = vec![VoxelType::Air; PADDED_X * PADDED_Y * PADDED_Z];
+        padded.fill(VoxelType::Air);
 
         for x in 0..CHUNK_X {
             for z in 0..CHUNK_Z {
@@ -67,7 +76,7 @@ impl Chunk {
         if let Some(neighbor) = neighbor_pos_x {
             for z in 0..CHUNK_Z {
                 for y in 0..CHUNK_Y {
-                    let src = 0 * (CHUNK_Z * CHUNK_Y) + z * CHUNK_Y + y;
+                    let src = z * CHUNK_Y + y;
                     padded[padded_index(PADDED_X - 1, y + 1, z + 1)] = neighbor[src];
                 }
             }
@@ -85,7 +94,7 @@ impl Chunk {
         if let Some(neighbor) = neighbor_pos_z {
             for x in 0..CHUNK_X {
                 for y in 0..CHUNK_Y {
-                    let src = x * (CHUNK_Z * CHUNK_Y) + 0 * CHUNK_Y + y;
+                    let src = x * (CHUNK_Z * CHUNK_Y) + y;
                     padded[padded_index(x + 1, y + 1, PADDED_Z - 1)] = neighbor[src];
                 }
             }
@@ -99,9 +108,7 @@ impl Chunk {
                 }
             }
         }
-        padded
     }
-
     pub fn get_voxel(flat: &[VoxelType], x: usize, y: usize, z: usize) -> VoxelType {
         flat[x * (CHUNK_Z * CHUNK_Y) + z * CHUNK_Y + y]
     }
