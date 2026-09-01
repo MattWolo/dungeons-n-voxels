@@ -1,3 +1,5 @@
+use rand::{random, RngExt};
+use crate::generation::worldgen::{biome_for_cell, height_for_biome, worley_f1, Biome};
 use super::types::*;
 
 pub const PADDED_X: usize = CHUNK_X + 2;
@@ -24,12 +26,26 @@ fn compress_to_runs(flat: &[VoxelType]) -> Vec<Run>{
         .collect()
 }
 impl Chunk {
-    pub fn generate() -> Self {
+    pub fn generate(chunk_x: i32, chunk_z: i32, world_seed: u32) -> Self {
         let mut flat = Vec::with_capacity(CHUNK_VOLUME);
-        for _x in 0..CHUNK_X {
-            for _z in 0..CHUNK_Z {
+        for x in 0..CHUNK_X {
+            for z in 0..CHUNK_Z {
+                let world_x = (chunk_x * CHUNK_X as i32 + x as i32) as f32;
+                let world_z = (chunk_z * CHUNK_Z as i32 + z as i32) as f32;
+                let (_dist, cell) = worley_f1(world_x, world_z, 256.0, world_seed);
+                let biome = biome_for_cell(cell, 256.0, world_seed);
+                //println!("{:?}", biome);
+                let height = height_for_biome(biome, world_x, world_z, world_seed);
+                let surface_material = match biome {
+                    Biome::Plains => VoxelType::Grass,
+                    Biome::Snowy => VoxelType::Snow,
+                };
                 for y in 0..CHUNK_Y {
-                    let voxel = if y < 64 { VoxelType::Grass } else { VoxelType::Air };
+                    let voxel = if y < height {
+                        surface_material
+                    } else {
+                        VoxelType::Air
+                    };
                     flat.push(voxel);
                 }
             }

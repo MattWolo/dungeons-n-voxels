@@ -10,6 +10,8 @@ const TOP_NORMAL: [f32; 3] = [0.0, 1.0, 0.0];
 const BOTTOM_NORMAL: [f32; 3] = [0.0, -1.0, 0.0];
 const BACK_NORMAL: [f32; 3] = [0.0,  0.0, 1.0];
 const FRONT_NORMAL: [f32; 3] = [0.0,  0.0, -1.0];
+const EXPECTED_VERTICES: usize = 2048;
+const EXPECTED_INDICES: usize = 2048;
 
 pub struct ChunkMeshScratch {
     pub own_flat: Vec<VoxelType>,
@@ -31,10 +33,10 @@ impl ChunkMeshScratch {
             own_flat: Vec::with_capacity(CHUNK_VOLUME),
             neighbors: std::array::from_fn(|_| Vec::with_capacity(CHUNK_VOLUME)),
             padded: vec![VoxelType::Air; PADDED_X * PADDED_Y * PADDED_Z],
-            positions: Vec::with_capacity(1024),
-            normals: Vec::with_capacity(1024),
-            colors: Vec::with_capacity(1024),
-            indices: Vec::with_capacity(1536),
+            positions: Vec::with_capacity(EXPECTED_VERTICES),
+            normals: Vec::with_capacity(EXPECTED_VERTICES),
+            colors: Vec::with_capacity(EXPECTED_VERTICES),
+            indices: Vec::with_capacity(EXPECTED_INDICES),
             mask_y: [0u32; CHUNK_Y],
             mask_z: [0u32; CHUNK_Z],
         }
@@ -49,6 +51,12 @@ impl ChunkMeshScratch {
         self.normals.clear();
         self.colors.clear();
         self.indices.clear();
+
+        self.positions.reserve(EXPECTED_VERTICES);
+        self.normals.reserve(EXPECTED_VERTICES);
+        self.colors.reserve(EXPECTED_VERTICES);
+        self.indices.reserve(EXPECTED_INDICES);
+
         self.mask_y.fill(0);
         self.mask_z.fill(0);
     }
@@ -124,10 +132,10 @@ pub fn build_mesh_from_scratch(scratch: &mut ChunkMeshScratch) -> Mesh {
         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD
     );
 
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, scratch.positions.clone());
-    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, scratch.normals.clone());
-    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, scratch.colors.clone());
-    mesh.insert_indices(Indices::U32(scratch.indices.clone()));
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, std::mem::take(&mut scratch.positions));
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, std::mem::take(&mut scratch.normals));
+    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::mem::take(&mut scratch.colors));
+    mesh.insert_indices(Indices::U32(std::mem::take(&mut scratch.indices)));
 
     mesh
 }
@@ -250,7 +258,6 @@ pub fn mesh_top_faces_binary(
 ) {
     for y in 0..CHUNK_Y {
         masks.fill(0);
-        // Step 1: Build 2D face mask for current Y slice
         for z in 0..CHUNK_Z {
             let mut row_mask = 0u32;
             for x in 0..CHUNK_X {
@@ -389,7 +396,7 @@ pub fn mesh_front_faces_binary(
 
             normals.extend_from_slice(&[FRONT_NORMAL; 4]);
 
-            let voxel = padded[padded_index(x_start + 1, y_start + 2, z + 1)];
+            let voxel = padded[padded_index(x_start + 1, y_start + 1, z + 1)];
             colors.extend_from_slice(&[voxel.face_color(); 4]);
 
             indices.extend_from_slice(&[

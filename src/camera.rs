@@ -32,8 +32,12 @@ fn spawn_camera(mut commands: Commands) {
     ));
 
     commands.spawn((
-        PointLight::default(),
-        Transform::from_xyz(-10.8, 50.8, 10.8),
+        DirectionalLight {
+            illuminance: 8000.0,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 20.0, 0.0)
+            .looking_at(Vec3::ZERO, Vec3::Y),
     ));
 }
 
