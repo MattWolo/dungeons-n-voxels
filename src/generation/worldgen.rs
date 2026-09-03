@@ -1,4 +1,96 @@
 use bevy::prelude::*;
+use crate::generation::biome_recipes::{SampledTerrain, BIOME_RECIPES};
+use crate::generation::voxel_type::{VoxelType, CHUNK_Y};
+
+pub fn sample_terrain(world_x: f32, world_z: f32, seed: u32) -> SampledTerrain {
+    let temp = sample_temperature(world_x, world_z, seed);
+    let moisture = sample_moisture(world_x, world_z, seed);
+    let erosion = sample_erosion(world_x, world_z, seed);
+
+    let mut total_weight = 0.0;
+    let mut blended_base = 0.0;
+    let mut blended_knoll_amp = 0.0;
+    let mut blended_ridge_amp = 0.0;
+
+    let mut dominant_weight = -1.0;
+    let mut dominant_surface = VoxelType::Grass;
+
+    for recipe in BIOME_RECIPES {
+        let d_temp = temp - recipe.temp;
+        let d_moist = moisture - recipe.moisture;
+        let d_erosion = erosion - recipe.erosion;
+
+        let dist_sq = d_temp * d_temp + d_moist * d_moist + d_erosion * d_erosion;
+
+        if dist_sq > 0.8 {
+            continue;
+        }
+
+        let weight = (-8.0 * dist_sq).exp() + 0.00001;
+
+        if weight > dominant_weight {
+            dominant_weight = weight;
+            dominant_surface = recipe.surface;
+        }
+
+        total_weight += weight;
+        blended_base += recipe.base_height * weight;
+        blended_knoll_amp += recipe.knoll_amplitude * weight;
+        blended_ridge_amp += recipe.ridge_amplitude * weight;
+    }
+
+    let inv_weight = 1.0 / total_weight;
+
+    let base = blended_base * inv_weight;
+    let knoll_amp = blended_knoll_amp * inv_weight;
+    let ridge_amp = blended_ridge_amp * inv_weight;
+
+    let rolling = fbm(world_x * 0.0004, world_z * 0.0004, 2, 0.5, 2.0, seed.wrapping_add(200)) * 6.0;
+    let knoll = billow_knoll(world_x, world_z, seed) * knoll_amp;
+    let ridge = fbm(world_x * 0.002, world_z * 0.002, 3, 0.5, 2.0, seed.wrapping_add(300)).abs() * ridge_amp;
+
+    let final_height = (base + rolling + knoll + ridge).clamp(0.0, CHUNK_Y as f32) as usize;
+
+    SampledTerrain {
+        height: final_height,
+        surface: dominant_surface,
+    }
+}
+
+fn gradient_dot(ix: i32, iz: i32, x: f32, z: f32, seed: u32) -> f32 {
+    let (rand_a, _) = hash2(ix, iz, seed);
+    let angle = rand_a * std::f32::consts::TAU;
+    let (gx, gz) = (angle.cos(), angle.sin());
+
+    let dx = x - ix as f32;
+    let dz = z - iz as f32;
+    gx * dx + gz * dz
+}
+
+fn fade(t: f32) -> f32 {
+    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+}
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + t * (b - a)
+}
+
+pub fn gradient_noise(x: f32, z: f32, seed: u32) -> f32 {
+    let x0 = x.floor() as i32;
+    let z0 = z.floor() as i32;
+    let tx = x - x0 as f32;
+    let tz = z - z0 as f32;
+
+    let n00 = gradient_dot(x0, z0, x, z, seed);
+    let n10 = gradient_dot(x0 + 1, z0, x, z, seed);
+    let n01 = gradient_dot(x0, z0 + 1, x, z, seed);
+    let n11 = gradient_dot(x0 + 1, z0 + 1, x, z, seed);
+
+    let u = fade(tx);
+    let v = fade(tz);
+    let nx0 = n00 + u * (n10 - n00);
+    let nx1 = n01 + u * (n11 - n01);
+    nx0 + v * (nx1 - nx0)
+}
 
 fn hash2(x: i32, z: i32, seed: u32) -> (f32, f32) {
     let mut h = (x as u32).wrapping_mul(0x27d4eb2f)
@@ -13,6 +105,12 @@ fn hash2(x: i32, z: i32, seed: u32) -> (f32, f32) {
     let fx = (h & 0xFFFF) as f32 / 65536.0;
     let fz = ((h >> 16) & 0xFFFF) as f32 / 65536.0;
     (fx, fz)
+}
+
+pub fn billow_knoll(world_x: f32, world_z: f32, seed: u32) -> f32 {
+    let raw = fbm(world_x * 0.008, world_z * 0.008, 3, 0.5, 2.0, seed);
+    let billow = 1.0 - raw.abs();
+    billow.powf(3.0)
 }
 
 pub fn worley_f1(world_x: f32, world_z: f32, cell_size: f32, seed: u32) -> (f32, IVec2) {
@@ -44,70 +142,20 @@ pub fn worley_f1(world_x: f32, world_z: f32, cell_size: f32, seed: u32) -> (f32,
 
     (best_dist_sq.sqrt(), best_cell)
 }
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Biome {
-    Plains,
-    Snowy
-    // more variants go here later
+pub fn surface_material(world_x: f32, world_z: f32, seed: u32) -> VoxelType {
+    let temp = sample_temperature(world_x, world_z, seed);
+    if temp < -0.1 { VoxelType::Snow } else { VoxelType::Grass }
 }
 
-pub fn biome_for_cell(cell: IVec2, cell_size: f32, seed: u32) -> Biome {
-    //let center_x = cell.x as f32 * cell_size;
-    //let center_z = cell.y as f32 * cell_size;
-
-    // low frequency relative to height noise this is what makes
-    // neighboring cells agree and form large regions instead of noise
-    let biome_value = fbm(cell.x as f32 * 0.05, cell.y as f32 * 0.05, 2, 0.5, 2.0, seed.wrapping_add(999));
-
-    if biome_value > 0.05 { Biome::Snowy } else { Biome::Plains }
+pub fn sample_temperature(world_x: f32, world_z: f32, seed: u32) -> f32 {
+    fbm(world_x * 0.00008, world_z * 0.00008, 3, 0.5, 2.0, seed.wrapping_add(1))
 }
-
-pub fn height_for_biome(biome: Biome, world_x: f32, world_z: f32, seed: u32) -> usize {
-    match biome {
-        Biome::Plains => {
-            let n = fbm(world_x * 0.02, world_z * 0.02, 3, 0.5, 2.0, seed);
-            (64.0 + n * 8.0) as usize // gentle
-        }
-        Biome::Snowy => {
-            let n = fbm(world_x * 0.02, world_z * 0.02, 3, 0.5, 2.0, seed);
-            (64.0 + n * 12.0) as usize
-        }
-    }
+pub fn sample_moisture(world_x: f32, world_z: f32, seed: u32) -> f32 {
+    fbm(world_x * 0.00008, world_z * 0.00008, 3, 0.5, 2.0, seed.wrapping_add(2))
 }
-
-fn gradient_dot(ix: i32, iz: i32, x: f32, z: f32, seed: u32) -> f32 {
-    let (rand_a, _) = hash2(ix, iz, seed);
-    let angle = rand_a * std::f32::consts::TAU;
-    let (gx, gz) = (angle.cos(), angle.sin());
-
-    let dx = x - ix as f32;
-    let dz = z - iz as f32;
-    gx * dx + gz * dz
+pub fn sample_erosion(world_x: f32, world_z: f32, seed: u32) -> f32 {
+    fbm(world_x * 0.0001, world_z * 0.0001, 3, 0.5, 2.0, seed.wrapping_add(3))
 }
-
-fn fade(t: f32) -> f32 {
-    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
-}
-
-pub fn gradient_noise(x: f32, z: f32, seed: u32) -> f32 {
-    let x0 = x.floor() as i32;
-    let z0 = z.floor() as i32;
-    let tx = x - x0 as f32;
-    let tz = z - z0 as f32;
-
-    let n00 = gradient_dot(x0, z0, x, z, seed);
-    let n10 = gradient_dot(x0 + 1, z0, x, z, seed);
-    let n01 = gradient_dot(x0, z0 + 1, x, z, seed);
-    let n11 = gradient_dot(x0 + 1, z0 + 1, x, z, seed);
-
-    let u = fade(tx);
-    let v = fade(tz);
-    let nx0 = n00 + u * (n10 - n00);
-    let nx1 = n01 + u * (n11 - n01);
-    nx0 + v * (nx1 - nx0)
-}
-
 pub fn fbm(x: f32, z: f32, octaves: u32, persistence: f32, lacunarity: f32, seed: u32) -> f32 {
     let mut total = 0.0;
     let mut amplitude = 1.0;

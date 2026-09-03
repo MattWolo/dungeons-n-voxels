@@ -1,7 +1,8 @@
-pub mod types;
+pub mod voxel_type;
 pub mod chunk;
 pub mod mesh;
 mod worldgen;
+mod biome_recipes;
 
 use bevy::pbr::wireframe::Wireframe;
 use bevy::prelude::*;
@@ -11,7 +12,7 @@ use futures_lite::future;
 
 use chunk::Chunk;
 use mesh::{build_mesh_from_scratch, THREAD_SCRATCH};
-use types::{CHUNK_X, CHUNK_Z};
+use voxel_type::{CHUNK_X, CHUNK_Z};
 const RENDER_DISTANCE: i32 = 64;
 pub struct ChunkPlugin;
 impl Plugin for ChunkPlugin {

@@ -2,7 +2,7 @@ use bevy::mesh::{Indices, Mesh};
 use bevy::render::render_resource::PrimitiveTopology;
 use bevy::asset::RenderAssetUsages;
 use std::cell::RefCell;
-use super::types::*;
+use super::voxel_type::*;
 use super::chunk::{padded_index, PADDED_X, PADDED_Y, PADDED_Z};
 const RIGHT_NORMAL: [f32; 3] = [1.0, 0.0, 0.0];
 const LEFT_NORMAL: [f32; 3] = [-1.0, 0.0, 0.0];
@@ -316,7 +316,7 @@ pub fn mesh_bottom_faces_binary(
             for x in 0..CHUNK_X{
                 let current = padded[padded_index(x + 1, y + 1, z + 1)];
                 let neighbor_below = padded[padded_index(x + 1, y, z + 1)];
-                if current != VoxelType::Air && neighbor_below == VoxelType::Air {
+                if current != VoxelType::Air && neighbor_below == VoxelType::Air && y > 0 {
                     row_mask |= 1 << x;
                 }
             }

@@ -1,6 +1,6 @@
 use rand::{random, RngExt};
-use crate::generation::worldgen::{biome_for_cell, height_for_biome, worley_f1, Biome};
-use super::types::*;
+use crate::generation::worldgen::{sample_terrain};
+use super::voxel_type::*;
 
 pub const PADDED_X: usize = CHUNK_X + 2;
 pub const PADDED_Y: usize = CHUNK_Y + 2;
@@ -18,12 +18,21 @@ pub struct Chunk{
 }
 
 fn compress_to_runs(flat: &[VoxelType]) -> Vec<Run>{
-    flat.chunk_by(|a, b| a == b)
-        .map(|chunk| Run{
-            value: chunk[0],
-            length: chunk.len() as u16,
-        })
-        .collect()
+    let mut runs = Vec::new();
+    for chunk in flat.chunk_by(|a, b| a == b){
+        let val = chunk[0];
+        let mut remaining = chunk.len();
+
+        while remaining > 0 {
+            let len = remaining.min(u16::MAX as usize);
+            runs.push(Run {
+                value: val,
+                length: len as u16,
+            });
+            remaining -= len;
+        }
+    }
+    runs
 }
 impl Chunk {
     pub fn generate(chunk_x: i32, chunk_z: i32, world_seed: u32) -> Self {
@@ -32,17 +41,10 @@ impl Chunk {
             for z in 0..CHUNK_Z {
                 let world_x = (chunk_x * CHUNK_X as i32 + x as i32) as f32;
                 let world_z = (chunk_z * CHUNK_Z as i32 + z as i32) as f32;
-                let (_dist, cell) = worley_f1(world_x, world_z, 256.0, world_seed);
-                let biome = biome_for_cell(cell, 256.0, world_seed);
-                //println!("{:?}", biome);
-                let height = height_for_biome(biome, world_x, world_z, world_seed);
-                let surface_material = match biome {
-                    Biome::Plains => VoxelType::Grass,
-                    Biome::Snowy => VoxelType::Snow,
-                };
+                let sampled = sample_terrain(world_x, world_z, world_seed);
                 for y in 0..CHUNK_Y {
-                    let voxel = if y < height {
-                        surface_material
+                    let voxel = if y < sampled.height {
+                        sampled.surface
                     } else {
                         VoxelType::Air
                     };
@@ -77,7 +79,6 @@ impl Chunk {
         neighbor_pos_z: Option<&[VoxelType]>,
         neighbor_neg_z: Option<&[VoxelType]>,
     ) {
-        //let mut padded = vec![VoxelType::Air; PADDED_X * PADDED_Y * PADDED_Z];
         padded.fill(VoxelType::Air);
 
         for x in 0..CHUNK_X {
