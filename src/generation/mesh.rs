@@ -2,6 +2,7 @@ use bevy::mesh::{Indices, Mesh};
 use bevy::render::render_resource::PrimitiveTopology;
 use bevy::asset::RenderAssetUsages;
 use std::cell::RefCell;
+use tracing::info_span;
 use super::voxel_type::*;
 use super::chunk::{padded_index, PADDED_X, PADDED_Y, PADDED_Z};
 const RIGHT_NORMAL: [f32; 3] = [1.0, 0.0, 0.0];
@@ -67,6 +68,7 @@ thread_local! {
 }
 
 pub fn build_mesh_from_scratch(scratch: &mut ChunkMeshScratch) -> Mesh {
+    let _span = info_span!("build_mesh_from_scratch").entered();
     let mut vertex_offset: u32 = 0;
 
     mesh_right_faces_binary(

@@ -1,7 +1,7 @@
-use bevy::camera_controller::free_camera::FreeCameraPlugin;
 use bevy::prelude::*;
 use third_person_camera as tp_cam;
 use third_person_camera::TargetOffset;
+use crate::controls::MainCamera;
 
 #[derive(Component)]
 pub struct Player;
@@ -42,6 +42,7 @@ fn spawn_player(
         TargetOffset(Vec3::new(0.0, 3.0, 0.0)),
         tp_cam::ThirdPersonCamera::aimed_at(player),
         tp_cam::DampingFactor(5.0),
+        MainCamera
     )).id();
 
     commands.trigger(tp_cam::SetLocalCamera(camera));

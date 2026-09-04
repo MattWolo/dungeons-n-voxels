@@ -5,6 +5,7 @@ mod worldgen;
 mod biome_recipes;
 
 use bevy::pbr::wireframe::Wireframe;
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task};
 use futures_lite::future;
@@ -25,7 +26,10 @@ impl Plugin for ChunkPlugin {
 
 #[derive(Component)]
 pub struct ComputeChunkTask(Task<(IVec2, Mesh)>);
-
+#[derive(Resource, Default)]
+pub struct LoadedChunks {
+    pub entities: HashMap<IVec2, Entity>,
+}
 #[derive(Resource)]
 pub struct ChunkMaterial(pub Handle<StandardMaterial>);
 
@@ -33,6 +37,7 @@ fn spawn_chunk_tasks(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     ) {
+    let _span = info_span!("spawn_chunk_tasks").entered();
 
     let material_handle = materials.add(StandardMaterial {
         base_color: Color::WHITE,
@@ -92,7 +97,7 @@ fn handle_chunk_tasks(
     mut meshes: ResMut<Assets<Mesh>>,
     chunk_material: Res<ChunkMaterial>,
 ) {
-
+    let _span = info_span!("handle_chunk_tasks").entered();
     for (entity, mut task) in &mut tasks {
         if let Some((coord, mesh)) = future::block_on(future::poll_once(&mut task.0)) {
             commands.spawn((

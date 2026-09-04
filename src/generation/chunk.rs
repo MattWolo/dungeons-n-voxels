@@ -1,6 +1,7 @@
 use rand::{random, RngExt};
 use crate::generation::worldgen::{sample_terrain};
 use super::voxel_type::*;
+use tracing::info_span;
 
 pub const PADDED_X: usize = CHUNK_X + 2;
 pub const PADDED_Y: usize = CHUNK_Y + 2;
@@ -36,6 +37,7 @@ fn compress_to_runs(flat: &[VoxelType]) -> Vec<Run>{
 }
 impl Chunk {
     pub fn generate(chunk_x: i32, chunk_z: i32, world_seed: u32) -> Self {
+        let _span = info_span!("main_generate").entered();
         let mut flat = Vec::with_capacity(CHUNK_VOLUME);
         for x in 0..CHUNK_X {
             for z in 0..CHUNK_Z {
@@ -79,6 +81,7 @@ impl Chunk {
         neighbor_pos_z: Option<&[VoxelType]>,
         neighbor_neg_z: Option<&[VoxelType]>,
     ) {
+        let _span = info_span!("build_padded_chunk").entered();
         padded.fill(VoxelType::Air);
 
         for x in 0..CHUNK_X {
