@@ -15,8 +15,8 @@ use mesh::{build_mesh_from_scratch, THREAD_SCRATCH};
 use voxel_type::{CHUNK_X, CHUNK_Z};
 use crate::player::Player;
 
-const RENDER_DISTANCE: i32 = 64;
-const UNLOAD_DISTANCE: i32 = 66;
+const RENDER_DISTANCE: i32 = 16;
+const UNLOAD_DISTANCE: i32 = 18;
 const WORLD_SEED: u32 = 5345235;
 pub struct ChunkPlugin;
 impl Plugin for ChunkPlugin {

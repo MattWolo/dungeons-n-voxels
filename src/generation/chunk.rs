@@ -48,49 +48,57 @@ impl Chunk {
     ) {
         padded.fill(VoxelType::Air);
 
+        let own_stride_zy   = CHUNK_Z * CHUNK_Y;
+        let padded_stride_zy = PADDED_Z * PADDED_Y;
+        let padded_stride_y  = PADDED_Y;
+
+        //Copy chunk into the center
         for x in 0..CHUNK_X {
+            let own_x   = x * own_stride_zy;
+            let padded_x = (x + 1) * padded_stride_zy;
             for z in 0..CHUNK_Z {
-                for y in 0..CHUNK_Y {
-                    let src = x * (CHUNK_Z * CHUNK_Y) + z * CHUNK_Y + y;
-                    padded[padded_index(x + 1, y + 1, z + 1)] = own[src];
-                }
+                let own_start  = own_x + z * CHUNK_Y;
+                let padded_start = padded_x + (z + 1) * padded_stride_y + 1;
+                padded[padded_start..padded_start + CHUNK_Y]
+                    .copy_from_slice(&own[own_start..own_start + CHUNK_Y]);
             }
         }
 
-        // East neighbor
+        //East neighbor
         if let Some(edge) = neighbor_pos_x {
+            let base = (PADDED_X - 1) * padded_stride_zy;
             for z in 0..CHUNK_Z {
-                for y in 0..CHUNK_Y {
-                    let src = z * CHUNK_Y + y;
-                    padded[padded_index(PADDED_X - 1, y + 1, z + 1)] = edge[src];
-                }
+                let dst = base + (z + 1) * padded_stride_y + 1;
+                let src = z * CHUNK_Y;
+                padded[dst..dst + CHUNK_Y].copy_from_slice(&edge[src..src + CHUNK_Y]);
             }
         }
-        // West neighbor
+
+        //West neighbor
         if let Some(edge) = neighbor_neg_x {
             for z in 0..CHUNK_Z {
-                for y in 0..CHUNK_Y {
-                    let src = z * CHUNK_Y + y;
-                    padded[padded_index(0, y + 1, z + 1)] = edge[src];
-                }
+                let dst = (z + 1) * padded_stride_y + 1;
+                let src = z * CHUNK_Y;
+                padded[dst..dst + CHUNK_Y].copy_from_slice(&edge[src..src + CHUNK_Y]);
             }
         }
-        // North neighbor
+
+        //North neighbor
         if let Some(edge) = neighbor_pos_z {
+            let base = (PADDED_Z - 1) * padded_stride_y;
             for x in 0..CHUNK_X {
-                for y in 0..CHUNK_Y {
-                    let src = x * CHUNK_Y + y;
-                    padded[padded_index(x + 1, y + 1, PADDED_Z - 1)] = edge[src];
-                }
+                let dst = (x + 1) * padded_stride_zy + base + 1;
+                let src = x * CHUNK_Y;
+                padded[dst..dst + CHUNK_Y].copy_from_slice(&edge[src..src + CHUNK_Y]);
             }
         }
-        // South neighbor
+
+        //South neighbor
         if let Some(edge) = neighbor_neg_z {
             for x in 0..CHUNK_X {
-                for y in 0..CHUNK_Y {
-                    let src = x * CHUNK_Y + y;
-                    padded[padded_index(x + 1, y + 1, 0)] = edge[src];
-                }
+                let dst = (x + 1) * padded_stride_zy + 1;
+                let src = x * CHUNK_Y;
+                padded[dst..dst + CHUNK_Y].copy_from_slice(&edge[src..src + CHUNK_Y]);
             }
         }
     }
