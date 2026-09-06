@@ -1,8 +1,8 @@
 pub mod voxel_type;
 pub mod chunk;
 pub mod mesh;
-mod worldgen;
-mod biome_recipes;
+pub(crate) mod worldgen;
+pub(crate) mod biome_recipes;
 
 use bevy::pbr::wireframe::Wireframe;
 use bevy::platform::collections::{HashMap, HashSet};
@@ -15,9 +15,9 @@ use mesh::{build_mesh_from_scratch, THREAD_SCRATCH};
 use voxel_type::{CHUNK_X, CHUNK_Z};
 use crate::player::Player;
 
-const RENDER_DISTANCE: i32 = 16;
-const UNLOAD_DISTANCE: i32 = 18;
-const WORLD_SEED: u32 = 5345235;
+const RENDER_DISTANCE: i32 = 32;
+const UNLOAD_DISTANCE: i32 = 36;
+pub const WORLD_SEED: u32 = 5345235;
 pub struct ChunkPlugin;
 impl Plugin for ChunkPlugin {
     fn build(&self, app: &mut App) {

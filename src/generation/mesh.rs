@@ -11,8 +11,8 @@ const TOP_NORMAL: [f32; 3] = [0.0, 1.0, 0.0];
 const BOTTOM_NORMAL: [f32; 3] = [0.0, -1.0, 0.0];
 const BACK_NORMAL: [f32; 3] = [0.0,  0.0, 1.0];
 const FRONT_NORMAL: [f32; 3] = [0.0,  0.0, -1.0];
-const EXPECTED_VERTICES: usize = 2048;
-const EXPECTED_INDICES: usize = 2048;
+const EXPECTED_VERTICES: usize = 8_192;
+const EXPECTED_INDICES: usize = 16_384;
 
 pub struct ChunkMeshScratch {
     pub own_flat: Vec<VoxelType>,
@@ -48,10 +48,6 @@ impl ChunkMeshScratch {
         for n in &mut self.neighbors{
             n.clear();
         }
-        self.positions.clear();
-        self.normals.clear();
-        self.colors.clear();
-        self.indices.clear();
 
         self.positions.reserve(EXPECTED_VERTICES);
         self.normals.reserve(EXPECTED_VERTICES);
@@ -133,12 +129,11 @@ pub fn build_mesh_from_scratch(scratch: &mut ChunkMeshScratch) -> Mesh {
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD
     );
-
+    //println!("Vertices: {}, Indices: {}", scratch.positions.len(), scratch.indices.len());
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, std::mem::take(&mut scratch.positions));
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, std::mem::take(&mut scratch.normals));
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::mem::take(&mut scratch.colors));
     mesh.insert_indices(Indices::U32(std::mem::take(&mut scratch.indices)));
-
     mesh
 }
 
@@ -151,13 +146,20 @@ pub fn mesh_right_faces_binary(
     indices: &mut Vec<u32>,
     vertex_offset: &mut u32,
 ) {
-    for x in 0..CHUNK_X{
+    let stride_x = PADDED_Z * PADDED_Y;
+    let stride_z = PADDED_Y;
+
+    for x in 0..CHUNK_X {
         masks.fill(0);
         for y in 0..CHUNK_Y {
             let mut row_mask = 0u32;
-            for z in 0..CHUNK_Z{
-                let current = padded[padded_index(x + 1, y + 1, z + 1)];
-                let neighbor_right = padded[padded_index(x + 2, y + 1, z + 1)];
+
+            let base = (x + 1) * stride_x + (y + 1) + stride_z;
+            let neighbor_base = (x + 2) * stride_x + (y + 1) + stride_z;
+
+            for z in 0..CHUNK_Z {
+                let current = padded[base + z * stride_z];
+                let neighbor_right = padded[neighbor_base + z * stride_z];
                 if current != VoxelType::Air && neighbor_right == VoxelType::Air {
                     row_mask |= 1 << z;
                 }
@@ -205,14 +207,21 @@ pub fn mesh_left_faces_binary(
     indices: &mut Vec<u32>,
     vertex_offset: &mut u32,
 ) {
-    for x in 0..CHUNK_X{
+    let stride_x = PADDED_Z * PADDED_Y;
+    let stride_z = PADDED_Y;
+
+    for x in 0..CHUNK_X {
         masks.fill(0);
         for y in 0..CHUNK_Y {
             let mut row_mask = 0u32;
-            for z in 0..CHUNK_Z{
-                let current = padded[padded_index(x + 1, y + 1, z + 1)];
-                let neighbor_right = padded[padded_index(x, y + 1, z + 1)];
-                if current != VoxelType::Air && neighbor_right == VoxelType::Air {
+
+            let base = (x + 1) * stride_x + (y + 1) + stride_z;
+            let neighbor_base = x * stride_x + (y + 1) + stride_z;
+
+            for z in 0..CHUNK_Z {
+                let current = padded[base + z * stride_z];
+                let neighbor_left = padded[neighbor_base + z * stride_z];
+                if current != VoxelType::Air && neighbor_left == VoxelType::Air {
                     row_mask |= 1 << z;
                 }
             }
@@ -258,13 +267,21 @@ pub fn mesh_top_faces_binary(
     indices: &mut Vec<u32>,
     vertex_offset: &mut u32,
 ) {
+    let stride_x = PADDED_Z * PADDED_Y;
+    let stride_y = 1;
+    let stride_z = PADDED_Y;
+
     for y in 0..CHUNK_Y {
         masks.fill(0);
         for z in 0..CHUNK_Z {
             let mut row_mask = 0u32;
+
+            let base = stride_x + (y + 1) * stride_y + (z + 1) * stride_z;
+            let neighbor_base = base + stride_y;
+
             for x in 0..CHUNK_X {
-                let current = padded[padded_index(x + 1, y + 1, z + 1)];
-                let neighbor_above = padded[padded_index(x + 1, y + 2, z + 1)];
+                let current = padded[base + x * stride_x];
+                let neighbor_above = padded[neighbor_base + x * stride_x];
                 if current != VoxelType::Air && neighbor_above == VoxelType::Air {
                     row_mask |= 1 << x;
                 }
@@ -277,8 +294,8 @@ pub fn mesh_top_faces_binary(
             let max_x = min_x + width as f32;
             let min_z = z as f32 - 0.5;
             let max_z = min_z + depth as f32;
-            let fy = y as f32 + 0.5;
 
+            let fy = y as f32 + 0.5;
             let base = *vertex_offset;
 
             positions.extend_from_slice(&[
@@ -311,14 +328,22 @@ pub fn mesh_bottom_faces_binary(
     indices: &mut Vec<u32>,
     vertex_offset: &mut u32,
 ) {
-    for y in 0..CHUNK_Y{
+    let stride_x = PADDED_Z * PADDED_Y;
+    let stride_y = 1;
+    let stride_z = PADDED_Y;
+
+    for y in 0..CHUNK_Y {
         masks.fill(0);
         for z in 0..CHUNK_Z {
             let mut row_mask = 0u32;
-            for x in 0..CHUNK_X{
-                let current = padded[padded_index(x + 1, y + 1, z + 1)];
-                let neighbor_below = padded[padded_index(x + 1, y, z + 1)];
-                if current != VoxelType::Air && neighbor_below == VoxelType::Air && y > 0 {
+
+            let base = stride_x + (y + 1) * stride_y + (z + 1) * stride_z;
+            let neighbor_base = base - stride_y;
+
+            for x in 0..CHUNK_X {
+                let current = padded[base + x * stride_x];
+                let neighbor_below = padded[neighbor_base + x * stride_x];
+                if current != VoxelType::Air && neighbor_below == VoxelType::Air {
                     row_mask |= 1 << x;
                 }
             }
@@ -330,8 +355,8 @@ pub fn mesh_bottom_faces_binary(
             let max_x = min_x + width as f32;
             let min_z = z as f32 - 0.5;
             let max_z = min_z + depth as f32;
-            let fy = y as f32 - 0.5;
 
+            let fy = y as f32 - 0.5;
             let base = *vertex_offset;
 
             positions.extend_from_slice(&[
@@ -366,13 +391,21 @@ pub fn mesh_front_faces_binary(
     indices: &mut Vec<u32>,
     vertex_offset: &mut u32,
 ) {
-    for z in 0..CHUNK_Z{
+    let stride_x = PADDED_Z * PADDED_Y;
+    let stride_y = 1;
+    let stride_z = PADDED_Y;
+
+    for z in 0..CHUNK_Z {
         masks.fill(0);
         for y in 0..CHUNK_Y {
             let mut row_mask = 0u32;
-            for x in 0..CHUNK_X{
-                let current = padded[padded_index(x + 1, y + 1, z + 1)];
-                let neighbor_front = padded[padded_index(x + 1, y + 1, z)];
+
+            let base = stride_x + (y + 1) * stride_y + (z + 1) * stride_z;
+            let neighbor_base = base - stride_z;
+
+            for x in 0..CHUNK_X {
+                let current = padded[base + x * stride_x];
+                let neighbor_front = padded[neighbor_base + x * stride_x];
                 if current != VoxelType::Air && neighbor_front == VoxelType::Air {
                     row_mask |= 1 << x;
                 }
@@ -420,13 +453,21 @@ pub fn mesh_back_faces_binary(
     indices: &mut Vec<u32>,
     vertex_offset: &mut u32,
 ) {
-    for z in 0..CHUNK_Z{
+    let stride_x = PADDED_Z * PADDED_Y;
+    let stride_y = 1;
+    let stride_z = PADDED_Y;
+
+    for z in 0..CHUNK_Z {
         masks.fill(0);
         for y in 0..CHUNK_Y {
             let mut row_mask = 0u32;
-            for x in 0..CHUNK_X{
-                let current = padded[padded_index(x + 1, y + 1, z + 1)];
-                let neighbor_back = padded[padded_index(x + 1, y + 1, z + 2)];
+
+            let base = stride_x + (y + 1) * stride_y + (z + 1) * stride_z;
+            let neighbor_base = base + stride_z;
+
+            for x in 0..CHUNK_X {
+                let current = padded[base + x * stride_x];
+                let neighbor_back = padded[neighbor_base + x * stride_x];
                 if current != VoxelType::Air && neighbor_back == VoxelType::Air {
                     row_mask |= 1 << x;
                 }

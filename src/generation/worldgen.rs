@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use crate::generation::biome_recipes::{SampledTerrain, BIOME_RECIPES};
+use crate::generation::biome_recipes::{SampledTerrain, BIOME_RECIPES, BiomeRecipe};
 use crate::generation::voxel_type::{VoxelType, CHUNK_Y};
 
 pub fn sample_terrain(world_x: f32, world_z: f32, seed: u32) -> SampledTerrain {
@@ -169,5 +169,29 @@ pub fn fbm(x: f32, z: f32, octaves: u32, persistence: f32, lacunarity: f32, seed
         frequency *= lacunarity;
     }
 
-    total / max_amplitude
+    ((total / max_amplitude) * 2.5).clamp(-1.0, 1.0)
+}
+
+pub fn sample_biome(world_x: f32, world_z: f32, seed: u32) -> (&'static BiomeRecipe, f32, f32) {
+    let temp = sample_temperature(world_x, world_z, seed);
+    let moisture = sample_moisture(world_x, world_z, seed);
+    let erosion = sample_erosion(world_x, world_z, seed);
+
+    let mut dominant_weight = -1.0;
+    let mut dominant_recipe = &BIOME_RECIPES[0];
+
+    for recipe in BIOME_RECIPES {
+        let d_temp = temp - recipe.temp;
+        let d_moist = moisture - recipe.moisture;
+        let d_erosion = erosion - recipe.erosion;
+
+        let dist_sq = d_temp * d_temp + d_moist * d_moist + d_erosion * d_erosion;
+
+        let weight = (-8.0 * dist_sq).exp() + 0.00001;
+        if weight > dominant_weight {
+            dominant_weight = weight;
+            dominant_recipe = recipe;
+        }
+    }
+    (dominant_recipe, temp, moisture)
 }
