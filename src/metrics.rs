@@ -32,8 +32,6 @@ impl Plugin for MetricsPlugin {
 }
 
 fn setup_ui(mut commands: Commands) {
-    commands.spawn(Camera2d);
-
     commands.spawn((
         Text::new("FPS: -- | Triangles: --"),
         TextFont{

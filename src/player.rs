@@ -27,23 +27,17 @@ fn spawn_player(
             Player,
     )).id();
 
-    commands.spawn((
-        DirectionalLight {
-            illuminance: 8000.0,
-            ..default()
-        },
-        Transform::from_xyz(0.0, 20.0, 0.0)
-            .looking_at(Vec3::ZERO, Vec3::Y),
-        ));
-
     let camera =commands.spawn((
         Camera3d::default(),
+        Camera {
+            order: 0,
+            ..default()
+        },
         Transform::default(),
         TargetOffset(Vec3::new(0.0, 3.0, 0.0)),
         tp_cam::ThirdPersonCamera::aimed_at(player),
         tp_cam::DampingFactor(5.0),
-        MainCamera
+        MainCamera,
     )).id();
-
     commands.trigger(tp_cam::SetLocalCamera(camera));
 }
