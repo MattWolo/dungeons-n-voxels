@@ -4,6 +4,7 @@ pub mod mesh;
 pub(crate) mod worldgen;
 pub(crate) mod biome_recipes;
 pub(crate) mod environment;
+mod moon_material;
 
 use bevy::camera::visibility::RenderLayers;
 use bevy::pbr::wireframe::Wireframe;

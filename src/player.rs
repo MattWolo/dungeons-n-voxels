@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy_sky_gradient::plugin::SkyboxMagnetTag;
 use third_person_camera as tp_cam;
 use third_person_camera::TargetOffset;
 use crate::controls::MainCamera;
@@ -33,6 +34,7 @@ fn spawn_player(
             order: 0,
             ..default()
         },
+        SkyboxMagnetTag,
         Transform::default(),
         TargetOffset(Vec3::new(0.0, 3.0, 0.0)),
         tp_cam::ThirdPersonCamera::aimed_at(player),
