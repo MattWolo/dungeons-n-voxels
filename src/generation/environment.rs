@@ -1,6 +1,6 @@
-use std::f32::consts::FRAC_PI_2;
+use std::f32::consts::{FRAC_PI_2, TAU};
 use bevy::camera::visibility::RenderLayers;
-use bevy::light::light_consts::lux::FULL_MOON_NIGHT;
+use bevy::light::light_consts::lux::{FULL_MOON_NIGHT, MOONLESS_NIGHT};
 use bevy::prelude::*;
 use bevy::mesh::primitives::PlaneMeshBuilder;
 use bevy_sky_gradient::ambient_driver::AmbientDriverPlugin;
@@ -12,7 +12,7 @@ use bevy_sky_gradient::prelude::{SunDriverPlugin, SunSettings, SkyTimeSettings};
 use bevy_sky_gradient::sky_texture::{FullSkyCameraTag, SkyTexturePlugin, SkyTexturePluginSettings};
 use bevy_sky_gradient::sun::SunDriverTag;
 use crate::controls::MainCamera;
-use crate::generation::moon_material::{MoonDirection, MoonMaterial, MoonMaterialUniforms};
+use crate::generation::moon_material::{advance_lunar_clock, LunarClock, MoonDirection, MoonMaterial, MoonMaterialUniforms};
 use crate::player::Player;
 
 #[derive(Component)]
@@ -47,7 +47,7 @@ pub fn spawn_moon(
         commands.spawn((
             DirectionalLight {
                 color: Color::srgb(0.8, 1.1, 2.0),
-                illuminance: FULL_MOON_NIGHT,
+                illuminance: MOONLESS_NIGHT,
                 shadow_maps_enabled: true,
                 ..default()
             },
@@ -55,7 +55,7 @@ pub fn spawn_moon(
         ));
     commands.spawn((
         SpotLight {
-            color: Color::srgb(0.55, 0.7, 1.0),
+            color: Color::srgb(0.6, 0.6, 1.2),
             intensity: 0.0,
             range: 150.0,
             outer_angle: 0.8,
@@ -63,7 +63,7 @@ pub fn spawn_moon(
             shadow_maps_enabled: true,
             ..default()
         },
-        Transform::from_xyz(0.0, 20.0, 0.0)
+        Transform::from_xyz(0.0, 10.0, 0.0)
             .looking_at(Vec3::ZERO, Vec3::Z),
         MoonSpotlight,
     ));
@@ -76,14 +76,15 @@ fn update_moon_direction(
     if let Ok(sun_transform) = sun_query.single() {
         let dir = sun_transform.forward().normalize();
         moon_dir.dir = dir;
-        
+
         if dir.y >= 0.0 {
             let height = dir.y.clamp(0.0, 1.0);
-            
             if dir.z >= 0.0 {
-                moon_dir.night_progress = 0.5 * (1.0 - height);
+                // Sunset (0.0) -> Midnight (0.5)
+                moon_dir.night_progress = 0.5 * height;
             } else {
-                //moon_dir.night_progress = 0.5 + 0.5 * (1.0 - height);
+                // Midnight (0.5) -> Sunrise (1.0)
+                moon_dir.night_progress = 0.5 + 0.5 * (1.0 - height);
             }
         } else {
             moon_dir.night_progress = 0.0;
@@ -91,32 +92,49 @@ fn update_moon_direction(
     }
 }
 
+fn update_moon_material_phase(
+    lunar: Res<LunarClock>,
+    moon_material_q: Query<&MeshMaterial3d<MoonMaterial>>,
+    mut materials: ResMut<Assets<MoonMaterial>>,
+) {
+    let angle = lunar.phase() * TAU;
+    let phase_dir = Vec3::new(angle.sin(), 0.15, -angle.cos()).normalize();
+
+    for handle in &moon_material_q {
+        if let Some(mut mat) = materials.get_mut(handle) {
+            mat.uniforms.moon_dir = phase_dir;
+        }
+    }
+}
+
 fn update_moon_phase_light(
     moon_direction: Res<MoonDirection>,
+    lunar: Res<LunarClock>,
     player_q: Query<&Transform, (With<Player>, Without<MoonSpotlight>)>,
     mut spot_q: Query<(&mut SpotLight, &mut Transform), (With<MoonSpotlight>, Without<Player>)>,
 ) {
     let Ok(player_transform) = player_q.single() else { return; };
     
     let progress = moon_direction.night_progress;
-    let start_threshold = 0.0001;
-    let target_threshold = 0.03;
-    let fade_start = 0.04;
-    let fade_end = 0.18;
+    let start_threshold = 0.99;
+    let target_threshold = 0.5;
+    let fade_start = 0.49;
+    let fade_end = 0.15;
     let t_in = ((progress - start_threshold) / (target_threshold - start_threshold)).clamp(0.0, 1.0);
     let t_out = 1.0 - ((progress - fade_start) / (fade_end - fade_start)).clamp(0.0, 1.0);
     let t = t_in.min(t_out);
-    let eased = t * t * (3.0 - 2.0 * t);
+    let night_eased = t * t * (3.0 - 2.0 * t);
+    let raw_progress = (lunar.illumination() - 0.85) / (0.98 - 0.85);
+    let full_moon_gate = SmoothStepCurve.sample_clamped(raw_progress);
+    let eased = night_eased * full_moon_gate;
     for (mut spot, mut transform) in &mut spot_q {
-        spot.intensity = eased * 200_000_000.0;
+        spot.intensity = eased * 20_000_000.0;
         spot.color = Color::LinearRgba(LinearRgba::new(
-            0.55 + 0.20 * eased,
-            0.70 + 0.35 * eased,
-            1.00 + 0.60 * eased,
+            0.20 + 0.20 * eased,
+            0.20 + 0.35 * eased,
+            1.0 + 0.60 * eased,
             1.0,
         ));
-
-        // Position 20 units above player and point straight down (-Y)
         let anchor = player_transform.translation + Vec3::new(0.0, 20.0, 0.0);
         *transform = Transform::from_translation(anchor)
             .with_rotation(Quat::from_rotation_x(-FRAC_PI_2));
@@ -153,6 +171,7 @@ impl Plugin for EnvironmentPlugin {
                 skybox_gradient_render_layer: RenderLayers::layer(8),
                 ..default()
             })
+            .insert_resource(LunarClock{..default()})
             .insert_resource(SkyTexturePluginSettings {
                 sky_render_layer: RenderLayers::layer(8),
                 full_sky_camera_order: -2,
@@ -161,7 +180,6 @@ impl Plugin for EnvironmentPlugin {
             .init_resource::<MoonDirection>()
             .add_plugins(MaterialPlugin::<MoonMaterial>::default())
             .add_plugins(SkyTexturePlugin::default())
-            .add_systems(Update, sync_sky_camera_with_main)
             .add_plugins(
                 SkyPlugin::builder()
                     .set_sun_driver(SunDriverPlugin {
@@ -183,10 +201,10 @@ impl Plugin for EnvironmentPlugin {
                     })
                     .set_cycle(SkyCyclePlugin {
                         sky_time_settings: SkyTimeSettings {
-                            day_time_sec: 10.0,
-                            night_time_sec: 30.0,
-                            sunrise_time_sec: 20.0,
-                            sunset_time_sec: 20.0,
+                            day_time_sec: 300.0,
+                            night_time_sec: 300.0,
+                            sunrise_time_sec: 60.0,
+                            sunset_time_sec: 60.0,
                         },
                         sky_time: Default::default(),
                     })
@@ -196,21 +214,11 @@ impl Plugin for EnvironmentPlugin {
             )
             .add_systems(Startup, spawn_moon)
             .add_systems(Update, (
+                advance_lunar_clock,
                 update_moon_direction,
+                apply_moon_direction,
+                update_moon_material_phase,
                 update_moon_phase_light,
-                apply_moon_direction.after(update_moon_direction),
-            ));
-    }
-}
-
-fn sync_sky_camera_with_main(
-    main_camera: Query<(&Transform, &Projection), With<MainCamera>>,
-    mut sky_camera: Query<(&mut Transform, &mut Projection), (With<FullSkyCameraTag>, Without<MainCamera>)>,
-) {
-    if let Ok((main_transform, main_proj)) = main_camera.single() {
-        if let Ok((mut sky_transform, mut sky_proj)) = sky_camera.single_mut() {
-            sky_transform.rotation = main_transform.rotation;
-            *sky_proj = main_proj.clone();
-        }
+                ).chain());
     }
 }

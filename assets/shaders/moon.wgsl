@@ -10,14 +10,12 @@ struct MoonMaterialUniforms {
 @group(#{MATERIAL_BIND_GROUP}) @binding(0)
 var<uniform> uniforms: MoonMaterialUniforms;
 
-// Hash for 3D Noise
 fn hash33(p: vec3<f32>) -> vec3<f32> {
     var p3 = fract(p * vec3<f32>(0.1031, 0.1030, 0.0973));
     p3 += dot(p3, p3.yxz + 33.33);
     return fract((p3.xxy + p3.yxx) * p3.zyx);
 }
 
-// 3D Simplex-style Gradient Noise
 fn noise3D(p: vec3<f32>) -> f32 {
     let i = floor(p);
     let f = fract(p);
@@ -52,7 +50,6 @@ fn fbm3D(p: vec3<f32>) -> f32 {
 // Shared "seas vs highlands" mask, driven by domain-warped fbm.
 // Used for BOTH the terrain height and the surface albedo, so the dark
 // maria patches actually line up with where the ground sits lower
-// (previously these were computed two different ways and drifted apart).
 fn get_maria_mask(p: vec3<f32>) -> f32 {
     let warp = vec3<f32>(
         fbm3D(p * 0.8 + vec3<f32>(0.0, 0.0, 0.0)),
@@ -72,8 +69,6 @@ fn single_crater(p: vec3<f32>, center: vec3<f32>, radius: f32) -> f32 {
 
     // Sharp raised rim: a NARROW rise then a NARROW fall makes a thin,
     // crisp ridge (steep gradient = catches light as a hard edge) instead
-    // of the old wide 0.6-1.3 dome, which spread the height change over
-    // too much distance to ever look sharp.
     let rim_rise = smoothstep(0.80, 0.94, d);
     let rim_fall = smoothstep(1.12, 0.98, d);
     let rim = rim_rise * rim_fall * 0.55;
@@ -81,7 +76,6 @@ fn single_crater(p: vec3<f32>, center: vec3<f32>, radius: f32) -> f32 {
     return rim + pit + central_peak;
 }
 
-// Rays extending from major impact sites
 fn crater_rays(p: vec3<f32>, center: vec3<f32>) -> f32 {
     let dir = normalize(p - center);
     let dist = length(p - center);
@@ -90,8 +84,7 @@ fn crater_rays(p: vec3<f32>, center: vec3<f32>) -> f32 {
 }
 
 // Height used for COLOR ONLY - can stay rich/detailed since it never
-// touches the surface normal, so extra fine noise here can't turn into
-// visual static.
+// touches the surface normal
 fn get_moon_color_height(p: vec3<f32>) -> f32 {
     let maria_mask = get_maria_mask(p);
     let highlands = fbm3D(p * 2.5) * 0.3;
@@ -111,11 +104,6 @@ fn get_moon_color_height(p: vec3<f32>) -> f32 {
     return h;
 }
 
-// Height used ONLY to build the shading normal. The base terrain term is
-// deliberately much lower amplitude/frequency here than in the color
-// height above - that's what stops the whole moon from shading like
-// fuzzy static. The craters (which keep full strength) end up reading
-// as the dominant relief feature instead of getting drowned out.
 fn get_moon_bump_height(p: vec3<f32>) -> f32 {
     var h = fbm3D(p * 1.1) * 0.07;
 
@@ -137,12 +125,12 @@ fn get_moon_bump_height(p: vec3<f32>) -> f32 {
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let p2d = (in.uv - vec2<f32>(0.5)) * 2.0;
     let dist = length(p2d);
-    let moon_radius = 0.78; // Slightly reduced radius to leave room for the outer blue halo
+    let moon_radius = 0.78; // Reduced radius to leave room for the outer blue halo
 
     // Define Blue Luminance Palette
     let atmospheric_blue = vec3<f32>(0.35, 0.65, 0.80) * uniforms.color.rgb;
 
-    // 1. Outer Atmospheric Blue Glow (Renders outside the moon disk)
+    // Outer Atmospheric Blue Glow (Renders outside the moon disk)
     if (dist > moon_radius) {
         let glow_dist = (dist - moon_radius) / (1.0 - moon_radius);
         let glow_intensity = exp(-glow_dist * 4.5) * 0.35;
@@ -150,13 +138,13 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(glow_rgb, glow_intensity);
     }
 
-    // 2. Sphere Surface Mapping
+    // Sphere Surface Mapping
     let r = dist / moon_radius;
     let z = sqrt(max(0.0, 1.0 - r * r));
     let sphere_normal = vec3<f32>(p2d.x / moon_radius, -p2d.y / moon_radius, z);
     let sample_pos = sphere_normal * 2.2 + vec3<f32>(12.0, 5.0, 8.0);
 
-    // 3. Surface Normal Perturbation - uses the dedicated bump-only height field
+    // Surface Normal, uses the dedicated bump-only height field
     let eps = 0.015;
     let hb_center = get_moon_bump_height(sample_pos);
     let hb_x = get_moon_bump_height(sample_pos + vec3<f32>(eps, 0.0, 0.0));
@@ -166,19 +154,19 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let grad = vec3<f32>(hb_x - hb_center, hb_y - hb_center, hb_z - hb_center) / eps;
     let bumped_normal = normalize(sphere_normal - grad * 0.35);
 
-    // 4. Base Surface Colors (Maria vs Highlands) - same mask as the terrain now
+    // Base Surface Colors, same mask as the terrain
     let color_height = get_moon_color_height(sample_pos);
     let maria_val = get_maria_mask(sample_pos);
     let albedo_base = mix(vec3<f32>(0.85, 0.88, 0.92), vec3<f32>(0.28, 0.30, 0.34), maria_val);
     let final_albedo = albedo_base + vec3<f32>(color_height * 0.55);
 
-    // 5. Directional Lighting with a crisper terminator band
+    // Directional Lighting with a terminator band
     let light_dir = normalize(uniforms.moon_dir);
     let raw_ndotl = dot(bumped_normal, light_dir);
-    let terminator = smoothstep(0.0, 0.28, raw_ndotl); // widen/narrow this range to taste
+    let terminator = smoothstep(0.0, 0.28, raw_ndotl);
     let lighting = mix(0.14, 1.0, terminator);
 
-    // 6. Inner Rim Scattering (Atmospheric blue tint around the edge)
+    // Inner Rim Scattering (Atmospheric blue tint around the edge)
     let rim_scatter = pow(1.0 - z, 4.0) * atmospheric_blue * 0.6;
 
     // Smooth anti-aliased edge
