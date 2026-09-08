@@ -1,3 +1,4 @@
+use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy_sky_gradient::plugin::SkyboxMagnetTag;
 use third_person_camera as tp_cam;

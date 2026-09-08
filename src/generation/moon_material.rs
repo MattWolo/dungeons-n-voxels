@@ -4,11 +4,8 @@ use bevy::{
     render::render_resource::AsBindGroup,
     render::render_resource::ShaderType
 };
-use bevy::material::descriptor::RenderPipelineDescriptor;
-use bevy::material::specialize::SpecializedMeshPipelineError;
-use bevy::mesh::MeshVertexBufferLayoutRef;
-use bevy::pbr::{MaterialPipeline, MaterialPipelineKey};
 use bevy::shader::ShaderRef;
+
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub struct MoonMaterial {
@@ -17,11 +14,17 @@ pub struct MoonMaterial {
 }
 
 #[derive(Resource)]
-pub struct MoonDirection(pub Vec3);
+pub struct MoonDirection {
+    pub dir: Vec3,
+    pub night_progress: f32,
+}
 
 impl Default for MoonDirection {
     fn default() -> Self {
-        MoonDirection(Vec3::new(0.0, 0.0, 0.0))
+        Self {
+            dir: Vec3::ZERO,
+            night_progress: 0.0,
+        }
     }
 }
 
@@ -37,16 +40,7 @@ impl Material for MoonMaterial {
         "shaders/moon.wgsl".into()
     }
     fn alpha_mode(&self) -> AlphaMode {
-        AlphaMode::Mask(0.5)
-    }
-    fn specialize(
-        _pipeline: &MaterialPipeline,
-        descriptor: &mut RenderPipelineDescriptor,
-        _layout: &MeshVertexBufferLayoutRef,
-        _key: MaterialPipelineKey<Self>,
-    ) -> Result<(), SpecializedMeshPipelineError> {
-        descriptor.primitive.cull_mode = None;
-        Ok(())
+        AlphaMode::Blend
     }
 }
 
