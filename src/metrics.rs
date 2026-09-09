@@ -69,7 +69,7 @@ fn update_player_info(
     let player_chunk_x = player_transform.translation.x;
     let player_chunk_z = player_transform.translation.z;
 
-    let (biome, temp, moist) = sample_biome(player_chunk_x as f32, player_chunk_z as f32, WORLD_SEED);
+    let (biome, temp, moist) = sample_biome(player_chunk_x, player_chunk_z, WORLD_SEED);
 
     current_biome.0 = Some(biome);
 

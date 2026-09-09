@@ -1,4 +1,3 @@
-use bevy::prelude::*;
 use crate::generation::biome_recipes::{SampledTerrain, BIOME_RECIPES, BiomeRecipe};
 use crate::generation::voxel_type::{VoxelType, CHUNK_Y};
 
@@ -70,9 +69,9 @@ fn gradient_dot(ix: i32, iz: i32, x: f32, z: f32, seed: u32) -> f32 {
 fn fade(t: f32) -> f32 {
     t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
 }
-fn lerp(a: f32, b: f32, t: f32) -> f32 {
-    a + t * (b - a)
-}
+// fn lerp(a: f32, b: f32, t: f32) -> f32 {
+//     a + t * (b - a)
+// }
 
 pub fn gradient_noise(x: f32, z: f32, seed: u32) -> f32 {
     let x0 = x.floor() as i32;
@@ -113,39 +112,39 @@ pub fn billow_knoll(world_x: f32, world_z: f32, seed: u32) -> f32 {
     billow.powf(3.0)
 }
 
-pub fn worley_f1(world_x: f32, world_z: f32, cell_size: f32, seed: u32) -> (f32, IVec2) {
-    let cell_x = (world_x / cell_size).floor() as i32;
-    let cell_z = (world_z / cell_size).floor() as i32;
-
-    let mut best_dist_sq = f32::MAX;
-    let mut best_cell = IVec2::ZERO;
-
-    for dz in -1..=1 {
-        for dx in -1..=1 {
-            let cx = cell_x + dx;
-            let cz = cell_z + dz;
-            let (jx, jz) = hash2(cx, cz, seed);
-
-            let point_x = (cx as f32 + jx) * cell_size;
-            let point_z = (cz as f32 + jz) * cell_size;
-
-            let dx_ = world_x - point_x;
-            let dz_ = world_z - point_z;
-            let dist_sq = dx_ * dx_ + dz_ * dz_;
-
-            if dist_sq < best_dist_sq {
-                best_dist_sq = dist_sq;
-                best_cell = IVec2::new(cx, cz);
-            }
-        }
-    }
-
-    (best_dist_sq.sqrt(), best_cell)
-}
-pub fn surface_material(world_x: f32, world_z: f32, seed: u32) -> VoxelType {
-    let temp = sample_temperature(world_x, world_z, seed);
-    if temp < -0.1 { VoxelType::Snow } else { VoxelType::Grass }
-}
+// pub fn worley_f1(world_x: f32, world_z: f32, cell_size: f32, seed: u32) -> (f32, IVec2) {
+//     let cell_x = (world_x / cell_size).floor() as i32;
+//     let cell_z = (world_z / cell_size).floor() as i32;
+// 
+//     let mut best_dist_sq = f32::MAX;
+//     let mut best_cell = IVec2::ZERO;
+// 
+//     for dz in -1..=1 {
+//         for dx in -1..=1 {
+//             let cx = cell_x + dx;
+//             let cz = cell_z + dz;
+//             let (jx, jz) = hash2(cx, cz, seed);
+// 
+//             let point_x = (cx as f32 + jx) * cell_size;
+//             let point_z = (cz as f32 + jz) * cell_size;
+// 
+//             let dx_ = world_x - point_x;
+//             let dz_ = world_z - point_z;
+//             let dist_sq = dx_ * dx_ + dz_ * dz_;
+// 
+//             if dist_sq < best_dist_sq {
+//                 best_dist_sq = dist_sq;
+//                 best_cell = IVec2::new(cx, cz);
+//             }
+//         }
+//     }
+// 
+//     (best_dist_sq.sqrt(), best_cell)
+// }
+// pub fn surface_material(world_x: f32, world_z: f32, seed: u32) -> VoxelType {
+//     let temp = sample_temperature(world_x, world_z, seed);
+//     if temp < -0.1 { VoxelType::Snow } else { VoxelType::Grass }
+// }
 
 pub fn sample_temperature(world_x: f32, world_z: f32, seed: u32) -> f32 {
     fbm(world_x * 0.00008, world_z * 0.00008, 3, 0.5, 2.0, seed.wrapping_add(1))

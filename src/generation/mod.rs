@@ -1,21 +1,22 @@
 pub mod voxel_type;
 pub mod chunk;
 pub mod mesh;
-pub(crate) mod worldgen;
-pub(crate) mod biome_recipes;
-pub(crate) mod environment;
+pub mod worldgen;
+pub mod biome_recipes;
+pub mod environment;
 mod moon_material;
+mod fog;
 
-use bevy::camera::visibility::RenderLayers;
-use bevy::pbr::wireframe::Wireframe;
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task};
+use bevy_sky_gradient::plugin::GradientTextureHandle;
 use futures_lite::future;
 
 use chunk::Chunk;
 use mesh::{build_mesh_from_scratch, THREAD_SCRATCH};
 use voxel_type::{CHUNK_X, CHUNK_Z};
+use crate::generation::fog::{FogBindGroup, FogMaterial};
 use crate::player::Player;
 
 const RENDER_DISTANCE: i32 = 16;
@@ -26,6 +27,7 @@ impl Plugin for ChunkPlugin {
     fn build(&self, app: &mut App) {
         app
             .insert_resource(LoadedChunks::default())
+            .add_plugins(MaterialPlugin::<FogMaterial>::default())
             .add_systems(Startup, (setup_chunk_material, spawn_initial_chunks))
             .add_systems(Update, (
                 load_chunks_around_player,
@@ -44,7 +46,7 @@ pub struct LoadedChunks {
     pub pending: HashSet<IVec2>,
 }
 #[derive(Resource)]
-pub struct ChunkMaterial(pub Handle<StandardMaterial>);
+pub struct ChunkMaterial(pub Handle<FogMaterial>);
 
 fn spawn_chunk_task(
     commands: &mut Commands,
@@ -94,7 +96,6 @@ fn load_chunks_around_player(
     if let Ok(player_transform) = player_query.single() {
         let player_chunk_x = (player_transform.translation.x / CHUNK_X as f32).floor() as i32;
         let player_chunk_z = (player_transform.translation.z / CHUNK_Z as f32).floor() as i32;
-        let player_chunk = IVec2::new(player_chunk_x, player_chunk_z);
 
         let thread_pool = AsyncComputeTaskPool::get();
 
@@ -139,12 +140,12 @@ fn unload_distant_chunks(
 
 fn handle_chunk_tasks(
     mut commands: Commands,
-    mut tasks: Query<(Entity, &mut ComputeChunkTask, &ChunkCoord)>,
+    mut tasks: Query<(Entity, &mut ComputeChunkTask)>,
     mut meshes: ResMut<Assets<Mesh>>,
     chunk_material: Res<ChunkMaterial>,
     mut loaded_chunks: ResMut<LoadedChunks>,
 ) {
-    for (entity, mut task, chunk_coord) in &mut tasks {
+    for (entity, mut task) in &mut tasks {
         if let Some((coord, mesh)) = future::block_on(future::poll_once(&mut task.0)) {
             let mesh_entity = commands.spawn((
                 Mesh3d(meshes.add(mesh)),
@@ -165,18 +166,23 @@ fn handle_chunk_tasks(
 
 fn setup_chunk_material(
     mut commands: Commands,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<FogMaterial>>,
+    gradient_texture: Res<GradientTextureHandle>,
 ) {
-    let handle = materials.add(StandardMaterial {
-        base_color: Color::WHITE,
-        ..default()
+    let handle = materials.add(FogMaterial {
+        settings: FogBindGroup {
+            distance_start: 240.0,
+            distance_end: 480.0,
+        },
+        sky_texture: gradient_texture.render_target.clone(),
     });
+
     commands.insert_resource(ChunkMaterial(handle));
 }
 
 fn spawn_initial_chunks(
     mut commands: Commands,
-    mut loaded_chunks: ResMut<LoadedChunks>,
+    loaded_chunks: ResMut<LoadedChunks>,
 ) {
     let thread_pool = AsyncComputeTaskPool::get();
     const START_DISTANCE: i32 = 4;

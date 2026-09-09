@@ -1,4 +1,3 @@
-use rand::{random, RngExt};
 use crate::generation::worldgen::{sample_terrain};
 use super::voxel_type::*;
 use tracing::info_span;

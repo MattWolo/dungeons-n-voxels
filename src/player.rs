@@ -1,4 +1,3 @@
-use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy_sky_gradient::plugin::SkyboxMagnetTag;
 use third_person_camera as tp_cam;
@@ -35,12 +34,12 @@ fn spawn_player(
             order: 0,
             ..default()
         },
+        MainCamera,
         SkyboxMagnetTag,
         Transform::default(),
         TargetOffset(Vec3::new(0.0, 3.0, 0.0)),
         tp_cam::ThirdPersonCamera::aimed_at(player),
         tp_cam::DampingFactor(5.0),
-        MainCamera,
     )).id();
     commands.trigger(tp_cam::SetLocalCamera(camera));
 }

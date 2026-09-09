@@ -1,19 +1,20 @@
 use std::f32::consts::{FRAC_PI_2, TAU};
 use bevy::camera::visibility::RenderLayers;
-use bevy::light::light_consts::lux::{FULL_MOON_NIGHT, MOONLESS_NIGHT};
+use bevy::light::light_consts::lux::{AMBIENT_DAYLIGHT, MOONLESS_NIGHT};
 use bevy::prelude::*;
 use bevy::mesh::primitives::PlaneMeshBuilder;
-use bevy_sky_gradient::ambient_driver::AmbientDriverPlugin;
+use bevy_sky_gradient::ambient_driver::{AmbientDriverPlugin, AmbientSettings};
 use bevy_sky_gradient::aurora::{AuroraPlugin, AuroraSettings};
 use bevy_sky_gradient::cycle::SkyCyclePlugin;
 use bevy_sky_gradient::gradient_driver::GradientDriverPlugin;
-use bevy_sky_gradient::plugin::{SkyPlugin, SkySettings};
+use bevy_sky_gradient::plugin::{GradientTextureHandle, SkyPlugin, SkySettings};
 use bevy_sky_gradient::prelude::{SunDriverPlugin, SunSettings, SkyTimeSettings};
-use bevy_sky_gradient::sky_texture::{FullSkyCameraTag, SkyTexturePlugin, SkyTexturePluginSettings};
+use bevy_sky_gradient::sky_texture::{SkyTexturePlugin, SkyTexturePluginSettings};
 use bevy_sky_gradient::sun::SunDriverTag;
 use crate::controls::MainCamera;
 use crate::generation::moon_material::{advance_lunar_clock, LunarClock, MoonDirection, MoonMaterial, MoonMaterialUniforms};
 use crate::player::Player;
+use crate::generation::fog::{force_material_update, FogMaterial};
 
 #[derive(Component)]
 pub struct Moon;
@@ -114,7 +115,7 @@ fn update_moon_phase_light(
     mut spot_q: Query<(&mut SpotLight, &mut Transform), (With<MoonSpotlight>, Without<Player>)>,
 ) {
     let Ok(player_transform) = player_q.single() else { return; };
-    
+
     let progress = moon_direction.night_progress;
     let start_threshold = 0.99;
     let target_threshold = 0.5;
@@ -161,34 +162,76 @@ fn apply_moon_direction(
     }
 }
 
+// fn setup(
+//     mut commands: Commands,
+//     mut meshes: ResMut<Assets<Mesh>>,
+//     mut fog_materials: ResMut<Assets<FogMaterial>>,
+//     gradient_texture: Res<GradientTextureHandle>,
+// ) {
+//     commands.spawn((
+//         Mesh3d(meshes.add(Circle::new(90.0))),
+//         MeshMaterial3d(fog_materials.add(FogMaterial {
+//             settings: FogBindGroup {
+//                 color: vec3(0.0, 1.0, 0.0),
+//                 ..default()
+//             },
+//             sky_texture: gradient_texture.render_target.clone(),
+//         })),
+//         Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+//         ));
+//
+//     let mut rng = rand::rng();
+//     for _ in 0..100 {
+//         let x = rng.random_range(-80.0..80.0);
+//         let z = rng.random_range(-80.0..80.0);
+//         let scale = rng.random_range(1.0..8.0);
+//
+//         commands.spawn((
+//             Mesh3d(meshes.add(Cuboid::default())),
+//             MeshMaterial3d(fog_materials.add(FogMaterial {
+//                 settings: FogBindGroup {
+//                     color: vec3(1.0, 0.0, 0.0),
+//                     ..default()
+//                 },
+//                 sky_texture: gradient_texture.render_target.clone(),
+//             })),
+//             Transform::from_xyz(x, scale * 0.5, z).with_scale(Vec3::splat(scale)),
+//             ));
+//     }
+// }
+
 pub struct EnvironmentPlugin;
 impl Plugin for EnvironmentPlugin {
     fn build(&self, app: &mut App) {
+
         app
             .insert_resource(SkySettings {
-                spawn_default_skybox: true,
-                camera_gradient_order: -2,
-                skybox_gradient_render_layer: RenderLayers::layer(8),
+                // spawn_default_skybox: true,
+                // camera_gradient_order: -3,
+                // skybox_gradient_render_layer: RenderLayers::layer(6),
                 ..default()
             })
             .insert_resource(LunarClock{..default()})
             .insert_resource(SkyTexturePluginSettings {
-                sky_render_layer: RenderLayers::layer(8),
-                full_sky_camera_order: -2,
-                final_camera_order: -1,
+                // sky_render_layer: RenderLayers::layer(8),
+                // full_sky_camera_order: -2,
+                // final_camera_order: -1,
+                ..default()
             })
             .init_resource::<MoonDirection>()
             .add_plugins(MaterialPlugin::<MoonMaterial>::default())
-            .add_plugins(SkyTexturePlugin::default())
+            //.add_plugins(SkyTexturePlugin::default())
+            //.add_plugins((EguiPlugin::default(), WorldInspectorPlugin::default()))
             .add_plugins(
                 SkyPlugin::builder()
+                    .with_render_sky_to_texture()
                     .set_sun_driver(SunDriverPlugin {
                         spawn_default_sun_light: true,
                         sun_settings: SunSettings {
-                            illuminance: 8000.0,
-                            sun_strength: 0.4,
-                            sun_sharpness: 900.0,
-                            sun_color: vec4(1.0, 1.0, 0.0, 1.0),
+                            illuminance: AMBIENT_DAYLIGHT,
+                            sun_strength: 1.5,
+                            sun_sharpness: 400.0,
+                            sun_color: vec4(1.0, 1.0, 0.5, 1.0),
                             ..default()
                         },
                     })
@@ -196,15 +239,15 @@ impl Plugin for EnvironmentPlugin {
                         aurora_settings: AuroraSettings {
                             render_texture_percent: 0.0,
                             camera_render_layers: RenderLayers::none(),
-                            camera_order: -2,
+                            ..default()
                         },
                     })
-                    .set_cycle(SkyCyclePlugin {
+                        .set_cycle(SkyCyclePlugin {
                         sky_time_settings: SkyTimeSettings {
-                            day_time_sec: 300.0,
-                            night_time_sec: 300.0,
-                            sunrise_time_sec: 60.0,
-                            sunset_time_sec: 60.0,
+                            day_time_sec: 10.0,
+                            night_time_sec: 30.0,
+                            sunrise_time_sec: 50.0,
+                            sunset_time_sec: 50.0,
                         },
                         sky_time: Default::default(),
                     })
@@ -212,7 +255,12 @@ impl Plugin for EnvironmentPlugin {
                     .set_ambient_driver(AmbientDriverPlugin::default())
                     .build()
             )
-            .add_systems(Startup, spawn_moon)
+            .add_systems(Startup, (
+                spawn_moon,
+                //setup,
+                //setup_egui_render_layer
+            ))
+            .add_systems(Update, force_material_update)
             .add_systems(Update, (
                 advance_lunar_clock,
                 update_moon_direction,
