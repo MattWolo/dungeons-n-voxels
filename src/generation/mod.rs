@@ -7,6 +7,7 @@ pub mod environment;
 mod moon_material;
 mod fog;
 
+use bevy::pbr::wireframe::Wireframe;
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 use bevy::tasks::{AsyncComputeTaskPool, Task};
@@ -155,6 +156,7 @@ fn handle_chunk_tasks(
                     0.0,
                     coord.y as f32 * CHUNK_Z as f32,
                 ),
+                //Wireframe
             )).id();
 
             loaded_chunks.pending.remove(&coord);
