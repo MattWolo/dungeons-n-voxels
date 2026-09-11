@@ -20,8 +20,8 @@ use voxel_type::{CHUNK_X, CHUNK_Z};
 use crate::generation::fog::{FogBindGroup, FogMaterial};
 use crate::player::Player;
 
-const RENDER_DISTANCE: i32 = 16;
-const UNLOAD_DISTANCE: i32 = 18;
+const RENDER_DISTANCE: i32 = 8;
+const UNLOAD_DISTANCE: i32 = 12;
 pub const WORLD_SEED: u32 = 5345235;
 pub struct ChunkPlugin;
 impl Plugin for ChunkPlugin {
@@ -156,7 +156,7 @@ fn handle_chunk_tasks(
                     0.0,
                     coord.y as f32 * CHUNK_Z as f32,
                 ),
-                //Wireframe
+                Wireframe
             )).id();
 
             loaded_chunks.pending.remove(&coord);

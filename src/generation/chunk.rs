@@ -40,10 +40,10 @@ impl Chunk {
     pub fn build_padded_chunk(
         padded: &mut [VoxelType],
         own: &[VoxelType],
-        neighbor_pos_x: Option<&[VoxelType]>, // West edge of east neighbor
-        neighbor_neg_x: Option<&[VoxelType]>, // East edge of west neighbor
-        neighbor_pos_z: Option<&[VoxelType]>, // South edge of north neighbor
-        neighbor_neg_z: Option<&[VoxelType]>, // North edge of south neighbor
+        neighbor_pos_x: Option<&[VoxelType]>, // neighbor_east
+        neighbor_neg_x: Option<&[VoxelType]>, // neighbor_west
+        neighbor_pos_z: Option<&[VoxelType]>, // neighbor_north
+        neighbor_neg_z: Option<&[VoxelType]>, // neighbor_south
     ) {
         padded.fill(VoxelType::Air);
 
