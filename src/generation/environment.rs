@@ -14,7 +14,7 @@ use bevy_sky_gradient::sun::SunDriverTag;
 use crate::controls::MainCamera;
 use crate::generation::moon_material::{advance_lunar_clock, LunarClock, MoonDirection, MoonMaterial, MoonMaterialUniforms};
 use crate::player::Player;
-use crate::generation::fog::{force_material_update, FogMaterial};
+use crate::generation::voxel_material::{force_material_update};
 
 #[derive(Component)]
 pub struct Moon;

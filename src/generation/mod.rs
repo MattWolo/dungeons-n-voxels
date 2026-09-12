@@ -5,8 +5,9 @@ pub mod worldgen;
 pub mod biome_recipes;
 pub mod environment;
 mod moon_material;
-mod fog;
+mod voxel_material;
 
+use bevy::pbr::ExtendedMaterial;
 use bevy::pbr::wireframe::Wireframe;
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
@@ -17,18 +18,18 @@ use futures_lite::future;
 use chunk::Chunk;
 use mesh::{build_mesh_from_scratch, THREAD_SCRATCH};
 use voxel_type::{CHUNK_X, CHUNK_Z};
-use crate::generation::fog::{FogBindGroup, FogMaterial};
+use crate::generation::voxel_material::{VoxelMaterialExtension, VoxelMaterialSettings};
 use crate::player::Player;
 
-const RENDER_DISTANCE: i32 = 8;
-const UNLOAD_DISTANCE: i32 = 12;
+const RENDER_DISTANCE: i32 = 16;
+const UNLOAD_DISTANCE: i32 = 18;
 pub const WORLD_SEED: u32 = 5345235;
 pub struct ChunkPlugin;
 impl Plugin for ChunkPlugin {
     fn build(&self, app: &mut App) {
         app
             .insert_resource(LoadedChunks::default())
-            .add_plugins(MaterialPlugin::<FogMaterial>::default())
+            .add_plugins(MaterialPlugin::<ChunkMaterialHandle>::default())
             .add_systems(Startup, (setup_chunk_material, spawn_initial_chunks))
             .add_systems(Update, (
                 load_chunks_around_player,
@@ -46,8 +47,6 @@ pub struct LoadedChunks {
     pub entities: HashMap<IVec2, Entity>,
     pub pending: HashSet<IVec2>,
 }
-#[derive(Resource)]
-pub struct ChunkMaterial(pub Handle<FogMaterial>);
 
 fn spawn_chunk_task(
     commands: &mut Commands,
@@ -156,7 +155,7 @@ fn handle_chunk_tasks(
                     0.0,
                     coord.y as f32 * CHUNK_Z as f32,
                 ),
-                Wireframe
+                //Wireframe
             )).id();
 
             loaded_chunks.pending.remove(&coord);
@@ -165,20 +164,31 @@ fn handle_chunk_tasks(
         }
     }
 }
+pub type ChunkMaterialHandle = ExtendedMaterial<StandardMaterial, VoxelMaterialExtension>;
+
+#[derive(Resource)]
+pub struct ChunkMaterial(pub Handle<ChunkMaterialHandle>);
 
 fn setup_chunk_material(
     mut commands: Commands,
-    mut materials: ResMut<Assets<FogMaterial>>,
+    mut materials: ResMut<Assets<ChunkMaterialHandle>>,
     gradient_texture: Res<GradientTextureHandle>,
 ) {
-    let handle = materials.add(FogMaterial {
-        settings: FogBindGroup {
-            distance_start: 240.0,
-            distance_end: 480.0,
+    let handle = materials.add(ExtendedMaterial {
+        base: StandardMaterial {
+            perceptual_roughness: 0.9,
+            reflectance: 0.1,
+            ..default()
         },
-        sky_texture: gradient_texture.render_target.clone(),
+        extension: VoxelMaterialExtension {
+            settings: VoxelMaterialSettings {
+                distance_start: 240.0,
+                distance_end: 480.0,
+                ..default()
+            },
+            sky_texture: gradient_texture.render_target.clone(),
+        },
     });
-
     commands.insert_resource(ChunkMaterial(handle));
 }
 

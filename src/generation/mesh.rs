@@ -215,27 +215,27 @@ pub fn mesh_right_faces_binary(
                 }
 
                 let ao0 = vertex_ao(
-                    is_solid(padded, px, py - 1, pz),
-                    is_solid(padded, px, py, pz + 1),
-                    is_solid(padded, px, py - 1, pz + 1),
+                    is_solid(padded, px + 1, py - 1, pz),
+                    is_solid(padded, px + 1, py, pz + 1),
+                    is_solid(padded, px + 1, py - 1, pz + 1),
                 );
 
                 let ao1 = vertex_ao(
-                    is_solid(padded, px, py - 1, pz),
-                    is_solid(padded, px, py, pz - 1),
-                    is_solid(padded, px, py - 1, pz - 1),
+                    is_solid(padded, px + 1, py - 1, pz),
+                    is_solid(padded, px + 1, py, pz - 1),
+                    is_solid(padded, px + 1, py - 1, pz - 1),
                 );
 
                 let ao2 = vertex_ao(
-                    is_solid(padded, px, py + 1, pz),
-                    is_solid(padded, px, py, pz - 1),
-                    is_solid(padded, px, py + 1, pz - 1),
+                    is_solid(padded, px + 1, py + 1, pz),
+                    is_solid(padded, px + 1, py, pz - 1),
+                    is_solid(padded, px + 1, py + 1, pz - 1),
                 );
 
                 let ao3 = vertex_ao(
-                    is_solid(padded, px, py + 1, pz),
-                    is_solid(padded, px, py, pz + 1),
-                    is_solid(padded, px, py + 1, pz + 1),
+                    is_solid(padded, px + 1, py + 1, pz),
+                    is_solid(padded, px + 1, py, pz + 1),
+                    is_solid(padded, px + 1, py + 1, pz + 1),
                 );
 
                 let ao_mask =
@@ -307,14 +307,32 @@ pub fn mesh_right_faces_binary(
                 let ao3 = unpack_ao_corner(corner_keys[2], 3);
 
                 ao.extend_from_slice(&[ao0, ao1, ao2, ao3]);
-                indices.extend_from_slice(&[
-                    base,
-                    base + 1,
-                    base + 2,
-                    base,
-                    base + 2,
-                    base + 3,
-                ]);
+                let tl = ao0 as i32;
+                let tr = ao1 as i32;
+                let br = ao2 as i32;
+                let bl = ao3 as i32;
+
+                if tl + br > tr + bl {
+                    indices.extend_from_slice(&[
+                        base,
+                        base + 1,
+                        base + 3,
+
+                        base + 1,
+                        base + 2,
+                        base + 3,
+                    ]);
+                } else {
+                    indices.extend_from_slice(&[
+                        base,
+                        base + 1,
+                        base + 2,
+
+                        base,
+                        base + 2,
+                        base + 3,
+                    ]);
+                }
 
                 *vertex_offset += 4;
             },
@@ -353,27 +371,27 @@ pub fn mesh_left_faces_binary(
                 }
 
                 let ao0 = vertex_ao(
-                    is_solid(padded, px, py - 1, pz),
-                    is_solid(padded, px, py, pz - 1),
-                    is_solid(padded, px, py - 1, pz - 1),
+                    is_solid(padded, px - 1, py - 1, pz),
+                    is_solid(padded, px - 1, py, pz - 1),
+                    is_solid(padded, px - 1, py - 1, pz - 1),
                 );
 
                 let ao1 = vertex_ao(
-                    is_solid(padded, px, py - 1, pz),
-                    is_solid(padded, px, py, pz + 1),
-                    is_solid(padded, px, py - 1, pz + 1),
+                    is_solid(padded, px - 1, py - 1, pz),
+                    is_solid(padded, px - 1, py, pz + 1),
+                    is_solid(padded, px - 1, py - 1, pz + 1),
                 );
 
                 let ao2 = vertex_ao(
-                    is_solid(padded, px, py + 1, pz),
-                    is_solid(padded, px, py, pz + 1),
-                    is_solid(padded, px, py + 1, pz + 1),
+                    is_solid(padded, px - 1, py + 1, pz),
+                    is_solid(padded, px - 1, py, pz + 1),
+                    is_solid(padded, px - 1, py + 1, pz + 1),
                 );
 
                 let ao3 = vertex_ao(
-                    is_solid(padded, px, py + 1, pz),
-                    is_solid(padded, px, py, pz - 1),
-                    is_solid(padded, px, py + 1, pz - 1),
+                    is_solid(padded, px - 1, py + 1, pz),
+                    is_solid(padded, px - 1, py, pz - 1),
+                    is_solid(padded, px - 1, py + 1, pz - 1),
                 );
 
                 let ao_mask =
@@ -445,14 +463,32 @@ pub fn mesh_left_faces_binary(
                 let ao3 = unpack_ao_corner(corner_keys[3], 3);
 
                 ao.extend_from_slice(&[ao0, ao1, ao2, ao3]);
-                indices.extend_from_slice(&[
-                    base,
-                    base + 1,
-                    base + 2,
-                    base,
-                    base + 2,
-                    base + 3,
-                ]);
+                let tl = ao0 as i32;
+                let tr = ao1 as i32;
+                let br = ao2 as i32;
+                let bl = ao3 as i32;
+
+                if tl + br > tr + bl {
+                    indices.extend_from_slice(&[
+                        base,
+                        base + 1,
+                        base + 3,
+
+                        base + 1,
+                        base + 2,
+                        base + 3,
+                    ]);
+                } else {
+                    indices.extend_from_slice(&[
+                        base,
+                        base + 1,
+                        base + 2,
+
+                        base,
+                        base + 2,
+                        base + 3,
+                    ]);
+                }
 
                 *vertex_offset += 4;
             },
@@ -491,27 +527,27 @@ pub fn mesh_top_faces_binary(
                 }
 
                 let ao0 = vertex_ao(
-                    is_solid(padded, px - 1, py, pz),
-                    is_solid(padded, px, py, pz + 1),
-                    is_solid(padded, px - 1, py, pz + 1),
+                    is_solid(padded, px - 1, py + 1, pz),
+                    is_solid(padded, px,       py + 1, pz + 1),
+                    is_solid(padded, px - 1, py + 1, pz + 1),
                 );
 
                 let ao1 = vertex_ao(
-                    is_solid(padded, px + 1, py, pz),
-                    is_solid(padded, px, py, pz + 1),
-                    is_solid(padded, px + 1, py, pz + 1),
+                    is_solid(padded, px + 1, py + 1, pz),
+                    is_solid(padded, px,        py + 1, pz + 1),
+                    is_solid(padded, px + 1, py + 1, pz + 1),
                 );
 
                 let ao2 = vertex_ao(
-                    is_solid(padded, px + 1, py, pz),
-                    is_solid(padded, px, py, pz - 1),
-                    is_solid(padded, px + 1, py, pz - 1),
+                    is_solid(padded, px + 1, py + 1, pz),
+                    is_solid(padded, px,       py + 1, pz - 1),
+                    is_solid(padded, px + 1, py + 1, pz - 1),
                 );
 
                 let ao3 = vertex_ao(
-                    is_solid(padded, px - 1, py, pz),
-                    is_solid(padded, px, py, pz - 1),
-                    is_solid(padded, px - 1, py, pz - 1),
+                    is_solid(padded, px - 1, py + 1, pz),
+                    is_solid(padded, px,      py + 1, pz - 1),
+                    is_solid(padded, px - 1, py + 1, pz - 1),
                 );
 
                 let ao_mask =
@@ -583,14 +619,32 @@ pub fn mesh_top_faces_binary(
                 let ao3 = unpack_ao_corner(corner_keys[0], 3);
 
                 ao.extend_from_slice(&[ao0, ao1, ao2, ao3]);
-                indices.extend_from_slice(&[
-                    base,
-                    base + 1,
-                    base + 2,
-                    base,
-                    base + 2,
-                    base + 3,
-                ]);
+                let tl = ao0 as i32;
+                let tr = ao1 as i32;
+                let br = ao2 as i32;
+                let bl = ao3 as i32;
+
+                if tl + br > tr + bl {
+                    indices.extend_from_slice(&[
+                        base,
+                        base + 1,
+                        base + 3,
+
+                        base + 1,
+                        base + 2,
+                        base + 3,
+                    ]);
+                } else {
+                    indices.extend_from_slice(&[
+                        base,
+                        base + 1,
+                        base + 2,
+
+                        base,
+                        base + 2,
+                        base + 3,
+                    ]);
+                }
 
                 *vertex_offset += 4;
             },
@@ -629,27 +683,27 @@ pub fn mesh_bottom_faces_binary(
                 }
 
                 let ao0 = vertex_ao(
-                    is_solid(padded, px - 1, py, pz),
-                    is_solid(padded, px, py, pz - 1),
-                    is_solid(padded, px - 1, py, pz - 1),
+                    is_solid(padded, px - 1, py - 1, pz),
+                    is_solid(padded, px, py - 1, pz - 1),
+                    is_solid(padded, px - 1, py - 1, pz - 1),
                 );
 
                 let ao1 = vertex_ao(
-                    is_solid(padded, px + 1, py, pz),
-                    is_solid(padded, px, py, pz - 1),
-                    is_solid(padded, px + 1, py, pz - 1),
+                    is_solid(padded, px + 1, py - 1, pz),
+                    is_solid(padded, px, py - 1, pz - 1),
+                    is_solid(padded, px + 1, py - 1, pz - 1),
                 );
 
                 let ao2 = vertex_ao(
-                    is_solid(padded, px + 1, py, pz),
-                    is_solid(padded, px, py, pz + 1),
-                    is_solid(padded, px + 1, py, pz + 1),
+                    is_solid(padded, px + 1, py - 1, pz),
+                    is_solid(padded, px, py - 1, pz + 1),
+                    is_solid(padded, px + 1, py - 1, pz + 1),
                 );
 
                 let ao3 = vertex_ao(
-                    is_solid(padded, px - 1, py, pz),
-                    is_solid(padded, px, py, pz + 1),
-                    is_solid(padded, px - 1, py, pz + 1),
+                    is_solid(padded, px - 1, py - 1, pz),
+                    is_solid(padded, px, py - 1, pz + 1),
+                    is_solid(padded, px - 1, py - 1, pz + 1),
                 );
 
                 let ao_mask =
@@ -721,14 +775,32 @@ pub fn mesh_bottom_faces_binary(
                 let ao3 = unpack_ao_corner(corner_keys[3], 3);
 
                 ao.extend_from_slice(&[ao0, ao1, ao2, ao3]);
-                indices.extend_from_slice(&[
-                    base,
-                    base + 1,
-                    base + 2,
-                    base,
-                    base + 2,
-                    base + 3,
-                ]);
+                let tl = ao0 as i32;
+                let tr = ao1 as i32;
+                let br = ao2 as i32;
+                let bl = ao3 as i32;
+
+                if tl + br > tr + bl {
+                    indices.extend_from_slice(&[
+                        base,
+                        base + 1,
+                        base + 3,
+
+                        base + 1,
+                        base + 2,
+                        base + 3,
+                    ]);
+                } else {
+                    indices.extend_from_slice(&[
+                        base,
+                        base + 1,
+                        base + 2,
+
+                        base,
+                        base + 2,
+                        base + 3,
+                    ]);
+                }
 
                 *vertex_offset += 4;
             },
@@ -768,27 +840,27 @@ pub fn mesh_front_faces_binary(
                 }
 
                 let ao0 = vertex_ao(
-                    is_solid(padded, px + 1, py, pz),
-                    is_solid(padded, px, py - 1, pz),
-                    is_solid(padded, px + 1, py - 1, pz),
+                    is_solid(padded, px + 1, py, pz - 1),
+                    is_solid(padded, px, py - 1, pz - 1),
+                    is_solid(padded, px + 1, py - 1, pz - 1),
                 );
 
                 let ao1 = vertex_ao(
-                    is_solid(padded, px - 1, py, pz),
-                    is_solid(padded, px, py - 1, pz),
-                    is_solid(padded, px - 1, py - 1, pz),
+                    is_solid(padded, px - 1, py, pz - 1),
+                    is_solid(padded, px, py - 1, pz - 1),
+                    is_solid(padded, px - 1, py - 1, pz - 1),
                 );
 
                 let ao2 = vertex_ao(
-                    is_solid(padded, px - 1, py, pz),
-                    is_solid(padded, px, py + 1, pz),
-                    is_solid(padded, px - 1, py + 1, pz),
+                    is_solid(padded, px - 1, py, pz - 1),
+                    is_solid(padded, px, py + 1, pz - 1),
+                    is_solid(padded, px - 1, py + 1, pz - 1),
                 );
 
                 let ao3 = vertex_ao(
-                    is_solid(padded, px + 1, py, pz),
-                    is_solid(padded, px, py + 1, pz),
-                    is_solid(padded, px + 1, py + 1, pz),
+                    is_solid(padded, px + 1, py, pz - 1),
+                    is_solid(padded, px, py + 1, pz - 1),
+                    is_solid(padded, px + 1, py + 1, pz - 1),
                 );
 
                 let ao_mask =
@@ -860,14 +932,32 @@ pub fn mesh_front_faces_binary(
                 let ao3 = unpack_ao_corner(corner_keys[2], 3);
 
                 ao.extend_from_slice(&[ao0, ao1, ao2, ao3]);
-                indices.extend_from_slice(&[
-                    base,
-                    base + 1,
-                    base + 2,
-                    base,
-                    base + 2,
-                    base + 3,
-                ]);
+                let tl = ao0 as i32;
+                let tr = ao1 as i32;
+                let br = ao2 as i32;
+                let bl = ao3 as i32;
+
+                if tl + br > tr + bl {
+                    indices.extend_from_slice(&[
+                        base,
+                        base + 1,
+                        base + 3,
+
+                        base + 1,
+                        base + 2,
+                        base + 3,
+                    ]);
+                } else {
+                    indices.extend_from_slice(&[
+                        base,
+                        base + 1,
+                        base + 2,
+
+                        base,
+                        base + 2,
+                        base + 3,
+                    ]);
+                }
 
                 *vertex_offset += 4;
             },
@@ -907,27 +997,27 @@ pub fn mesh_back_faces_binary(
                 }
 
                 let ao0 = vertex_ao(
-                    is_solid(padded, px - 1, py, pz),
-                    is_solid(padded, px, py - 1, pz),
-                    is_solid(padded, px - 1, py - 1, pz),
+                    is_solid(padded, px - 1, py + 1, pz + 1),
+                    is_solid(padded, px, py + 1, pz + 1),
+                    is_solid(padded, px - 1, py + 1, pz + 1),
                 );
 
                 let ao1 = vertex_ao(
-                    is_solid(padded, px + 1, py, pz),
-                    is_solid(padded, px, py - 1, pz),
-                    is_solid(padded, px + 1, py - 1, pz),
+                    is_solid(padded, px + 1, py + 1, pz + 1),
+                    is_solid(padded, px, py + 1, pz + 1),
+                    is_solid(padded, px + 1, py + 1, pz + 1),
                 );
 
                 let ao2 = vertex_ao(
-                    is_solid(padded, px + 1, py, pz),
-                    is_solid(padded, px, py + 1, pz),
-                    is_solid(padded, px + 1, py + 1, pz),
+                    is_solid(padded, px + 1, py + 1, pz + 1),
+                    is_solid(padded, px, py + 1, pz + 1),
+                    is_solid(padded, px + 1, py + 1, pz + 1),
                 );
 
                 let ao3 = vertex_ao(
-                    is_solid(padded, px - 1, py, pz),
-                    is_solid(padded, px, py + 1, pz),
-                    is_solid(padded, px - 1, py + 1, pz),
+                    is_solid(padded, px - 1, py + 1, pz + 1),
+                    is_solid(padded, px, py + 1, pz + 1),
+                    is_solid(padded, px - 1, py + 1, pz + 1),
                 );
 
                 let ao_mask =
@@ -999,14 +1089,32 @@ pub fn mesh_back_faces_binary(
                 let ao3 = unpack_ao_corner(corner_keys[3], 0);
 
                 ao.extend_from_slice(&[ao0, ao1, ao2, ao3]);
-                indices.extend_from_slice(&[
-                    base,
-                    base + 1,
-                    base + 2,
-                    base,
-                    base + 2,
-                    base + 3,
-                ]);
+                let tl = ao0 as i32;
+                let tr = ao1 as i32;
+                let br = ao2 as i32;
+                let bl = ao3 as i32;
+
+                if tl + br > tr + bl {
+                    indices.extend_from_slice(&[
+                        base,
+                        base + 1,
+                        base + 3,
+
+                        base + 1,
+                        base + 2,
+                        base + 3,
+                    ]);
+                } else {
+                    indices.extend_from_slice(&[
+                        base,
+                        base + 1,
+                        base + 2,
+
+                        base,
+                        base + 2,
+                        base + 3,
+                    ]);
+                }
 
                 *vertex_offset += 4;
             },
@@ -1068,44 +1176,6 @@ fn unpack_ao(key: u16) -> u8 {
     (key >> 2) as u8
 }
 
-fn same_material(a: u16, b: u16) -> bool {
-    unpack_material(a) == unpack_material(b)
-}
-#[inline]
-fn compatible_horizontal(
-    a: u16,
-    b: u16,
-    map: AoCornerMap,
-) -> bool {
-    if !same_material(a, b) {
-        return false;
-    }
-
-    // A's right edge meets B's left edge.
-    unpack_ao_corner(a, map.top_right)
-        == unpack_ao_corner(b, map.top_left)
-        &&
-        unpack_ao_corner(a, map.bottom_right)
-            == unpack_ao_corner(b, map.bottom_left)
-}
-#[inline]
-fn compatible_vertical(
-    a: u16,
-    b: u16,
-    map: AoCornerMap,
-) -> bool {
-    if !same_material(a, b) {
-        return false;
-    }
-
-    // A's bottom edge meets B's top edge.
-    unpack_ao_corner(a, map.bottom_left)
-        == unpack_ao_corner(b, map.top_left)
-        &&
-        unpack_ao_corner(a, map.bottom_right)
-            == unpack_ao_corner(b, map.top_right)
-}
-
 #[derive(Clone, Copy)]
 struct AoCornerMap {
     // AO corner indices for:
@@ -1121,6 +1191,11 @@ struct AoCornerMap {
     bottom_right: usize,
     bottom_left: usize,
 }
+#[inline(always)]
+fn material_of(key: u16) -> u16 {
+    key & 0b11
+}
+
 fn greedy_merge_rows<const D1: usize, const D2: usize>(
     masks: &mut [u32],
     face_keys: &[[u16; D2]; D1],
@@ -1133,105 +1208,196 @@ fn greedy_merge_rows<const D1: usize, const D2: usize>(
         [u16; 4],
     ),
 ) {
+    let same_material =
+        |row: usize,
+         col0: usize,
+         width: usize,
+         depth: usize|
+         -> bool {
+            let anchor =
+                material_of(face_keys[row][col0]);
+
+            (row..row + depth).all(|r| {
+                (col0..col0 + width).all(|c| {
+                    material_of(face_keys[r][c])
+                        == anchor
+                })
+            })
+        };
+
+    let has_uniform_ao =
+        |row: usize,
+         col0: usize,
+         width: usize,
+         depth: usize|
+         -> bool {
+            let expected = unpack_ao_corner(
+                face_keys[row][col0],
+                ao_map.top_left,
+            );
+
+            for r in row..row + depth {
+                for c in col0..col0 + width {
+                    let key = face_keys[r][c];
+
+                    if unpack_ao_corner(
+                        key,
+                        ao_map.top_left,
+                    ) != expected
+                    {
+                        return false;
+                    }
+
+                    if unpack_ao_corner(
+                        key,
+                        ao_map.top_right,
+                    ) != expected
+                    {
+                        return false;
+                    }
+
+                    if unpack_ao_corner(
+                        key,
+                        ao_map.bottom_right,
+                    ) != expected
+                    {
+                        return false;
+                    }
+
+                    if unpack_ao_corner(
+                        key,
+                        ao_map.bottom_left,
+                    ) != expected
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            true
+        };
+
     for row in 0..masks.len() {
         while masks[row] != 0 {
-            let column_start = masks[row].trailing_zeros() as usize;
+            let column_start =
+                masks[row].trailing_zeros() as usize;
 
-            let first_key = face_keys[row][column_start];
-
-            //find width
             let mut width = 1;
 
-            while column_start + width < D2 {
-                let column = column_start + width;
+            let anchor_uniform = has_uniform_ao(
+                row,
+                column_start,
+                1,
+                1,
+            );
 
-                if masks[row] & (1u32 << column) == 0 {
-                    break;
+            if anchor_uniform {
+                while column_start + width < D2 {
+                    let next_bit =
+                        1u32 << (column_start + width);
+
+                    if masks[row] & next_bit == 0 {
+                        break;
+                    }
+
+                    let new_width = width + 1;
+
+                    if !same_material(
+                        row,
+                        column_start,
+                        new_width,
+                        1,
+                    ) {
+                        break;
+                    }
+
+                    if !has_uniform_ao(
+                        row,
+                        column_start,
+                        new_width,
+                        1,
+                    ) {
+                        break;
+                    }
+
+                    width = new_width;
                 }
-
-                let current_key = face_keys[row][column];
-
-                if !compatible_horizontal(
-                    face_keys[row][column - 1],
-                    current_key,
-                    ao_map,
-                ) {
-                    break;
-                }
-
-                width += 1;
             }
 
             let width_mask =
                 if width == 32 {
                     u32::MAX
                 } else {
-                    ((1u32 << width) - 1) << column_start
+                    ((1u32 << width) - 1)
+                        << column_start
                 };
 
-            //find depth
             let mut depth = 1;
 
-            while row + depth < D1 {
-                let next_row = row + depth;
+            if anchor_uniform {
+                while row + depth < D1 {
+                    let next_row = row + depth;
 
-                if (masks[next_row] & width_mask) != width_mask {
-                    break;
-                }
-
-                let mut compatible = true;
-
-                for column in column_start..column_start + width {
-                    let above_key = face_keys[next_row - 1][column];
-                    let below_key = face_keys[next_row][column];
-
-                    if !compatible_vertical(
-                        above_key,
-                        below_key,
-                        ao_map,
-                    ) {
-                        compatible = false;
+                    if (masks[next_row] & width_mask)
+                        != width_mask
+                    {
                         break;
                     }
 
-                    if column > column_start {
-                        let left_key = face_keys[next_row][column - 1];
+                    let new_depth = depth + 1;
 
-                        if !compatible_horizontal(
-                            left_key,
-                            below_key,
-                            ao_map,
-                        ) {
-                            compatible = false;
-                            break;
-                        }
+                    if !same_material(
+                        row,
+                        column_start,
+                        width,
+                        new_depth,
+                    ) {
+                        break;
                     }
-                }
 
-                if !compatible {
-                    break;
-                }
+                    if !has_uniform_ao(
+                        row,
+                        column_start,
+                        width,
+                        new_depth,
+                    ) {
+                        break;
+                    }
 
-                depth += 1;
+                    depth = new_depth;
+                }
             }
 
-            //rectangle
             for d in 0..depth {
                 masks[row + d] &= !width_mask;
             }
 
-            //outer corner faces
-            let top_left = face_keys[row][column_start];
-            let top_right = face_keys[row][column_start + width - 1];
-            let bottom_right = face_keys[row + depth - 1][column_start + width - 1];
-            let bottom_left = face_keys[row + depth - 1][column_start];
+            let top_left =
+                face_keys[row][column_start];
+
+            let top_right =
+                face_keys[row]
+                    [column_start + width - 1];
+
+            let bottom_right =
+                face_keys[row + depth - 1]
+                    [column_start + width - 1];
+
+            let bottom_left =
+                face_keys[row + depth - 1]
+                    [column_start];
 
             emit_quad(
                 row,
                 column_start,
                 width,
                 depth,
-                [top_left, top_right, bottom_right, bottom_left],
+                [
+                    top_left,
+                    top_right,
+                    bottom_right,
+                    bottom_left,
+                ],
             );
         }
     }
