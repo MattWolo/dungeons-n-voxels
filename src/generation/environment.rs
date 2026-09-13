@@ -162,44 +162,6 @@ fn apply_moon_direction(
     }
 }
 
-// fn setup(
-//     mut commands: Commands,
-//     mut meshes: ResMut<Assets<Mesh>>,
-//     mut fog_materials: ResMut<Assets<FogMaterial>>,
-//     gradient_texture: Res<GradientTextureHandle>,
-// ) {
-//     commands.spawn((
-//         Mesh3d(meshes.add(Circle::new(90.0))),
-//         MeshMaterial3d(fog_materials.add(FogMaterial {
-//             settings: FogBindGroup {
-//                 color: vec3(0.0, 1.0, 0.0),
-//                 ..default()
-//             },
-//             sky_texture: gradient_texture.render_target.clone(),
-//         })),
-//         Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
-//         ));
-//
-//     let mut rng = rand::rng();
-//     for _ in 0..100 {
-//         let x = rng.random_range(-80.0..80.0);
-//         let z = rng.random_range(-80.0..80.0);
-//         let scale = rng.random_range(1.0..8.0);
-//
-//         commands.spawn((
-//             Mesh3d(meshes.add(Cuboid::default())),
-//             MeshMaterial3d(fog_materials.add(FogMaterial {
-//                 settings: FogBindGroup {
-//                     color: vec3(1.0, 0.0, 0.0),
-//                     ..default()
-//                 },
-//                 sky_texture: gradient_texture.render_target.clone(),
-//             })),
-//             Transform::from_xyz(x, scale * 0.5, z).with_scale(Vec3::splat(scale)),
-//             ));
-//     }
-// }
-
 pub struct EnvironmentPlugin;
 impl Plugin for EnvironmentPlugin {
     fn build(&self, app: &mut App) {
@@ -229,7 +191,7 @@ impl Plugin for EnvironmentPlugin {
                         spawn_default_sun_light: true,
                         sun_settings: SunSettings {
                             illuminance: AMBIENT_DAYLIGHT,
-                            sun_strength: 1.5,
+                            sun_strength: 1.0,
                             sun_sharpness: 400.0,
                             sun_color: vec4(1.0, 1.0, 0.5, 1.0),
                             ..default()

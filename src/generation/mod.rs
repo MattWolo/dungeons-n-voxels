@@ -178,6 +178,7 @@ fn setup_chunk_material(
         base: StandardMaterial {
             perceptual_roughness: 0.9,
             reflectance: 0.1,
+            fog_enabled: false,
             ..default()
         },
         extension: VoxelMaterialExtension {
