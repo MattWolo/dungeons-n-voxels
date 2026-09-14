@@ -60,7 +60,7 @@ pub fn advance_lunar_clock(
     mut lunar: ResMut<LunarClock>,
 ) {
     let Ok(sun_transform) = sun_query.single() else { return; };
-    let is_night = sun_transform.forward().y >= 0.0;
+    let is_night = sun_transform.forward().y >= -0.2;
 
     if is_night && !lunar.was_night {
         lunar.day_index += 1;

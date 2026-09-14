@@ -1,0 +1,160 @@
+use std::f32::consts::{FRAC_PI_2, TAU};
+use bevy::asset::Assets;
+use bevy::camera::visibility::RenderLayers;
+use bevy::color::{Color, LinearRgba};
+use bevy::light::{DirectionalLight, SpotLight};
+use bevy::light::light_consts::lux::MOONLESS_NIGHT;
+use bevy::math::{Curve, Dir3, Quat, Vec2, Vec3};
+use bevy::mesh::{Mesh, Mesh3d, PlaneMeshBuilder};
+use bevy::pbr::MeshMaterial3d;
+use bevy::prelude::{default, Commands, Component, ResMut, Transform, With, Query, Res, Without, SmoothStepCurve, MeshBuilder};
+use bevy_sky_gradient::prelude::SunDriverTag;
+use crate::controls::MainCamera;
+use crate::generation::moon_material::{LunarClock, MoonDirection, MoonMaterial, MoonMaterialUniforms};
+use crate::player::Player;
+
+#[derive(Component)]
+pub struct Moon;
+
+#[derive(Component)]
+pub struct MoonSpotlight;
+
+pub fn spawn_moon(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<MoonMaterial>>,
+) {
+    let moon_direction = Vec3::new(0.6, 0.3, 0.75).normalize();
+    commands.spawn((
+        Mesh3d(meshes.add(
+            PlaneMeshBuilder::new(Dir3::Z, Vec2::new(60.0, 60.0)).build()
+        )),
+        MeshMaterial3d(materials.add(MoonMaterial {
+            uniforms: MoonMaterialUniforms {
+                moon_dir: moon_direction,
+                color: LinearRgba::new(0.8, 1.1, 2.0, 1.0),
+                angular_radius: 0.01,
+                softness: 0.01,
+            }
+        })),
+        Transform::from_translation(Vec3::Z * 500.0),
+        RenderLayers::default(),
+        Moon,
+    ));
+
+    commands.spawn((
+        DirectionalLight {
+            color: Color::srgb(0.8, 1.1, 2.0),
+            illuminance: MOONLESS_NIGHT,
+            shadow_maps_enabled: true,
+            ..default()
+        },
+        Transform::from_translation(moon_direction * 100.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
+    commands.spawn((
+        SpotLight {
+            color: Color::srgb(0.6, 0.6, 1.2),
+            intensity: 0.0,
+            range: 150.0,
+            outer_angle: 0.8,
+            inner_angle: 0.5,
+            shadow_maps_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(0.0, 10.0, 0.0)
+            .looking_at(Vec3::ZERO, Vec3::Z),
+        MoonSpotlight,
+    ));
+}
+
+pub fn update_moon_direction(
+    sun_query: Query<&Transform, With<SunDriverTag>>,
+    mut moon_dir: ResMut<MoonDirection>,
+) {
+    if let Ok(sun_transform) = sun_query.single() {
+        let dir = sun_transform.forward().normalize();
+        moon_dir.dir = dir;
+
+        if dir.y >= 0.0 {
+            let height = dir.y.clamp(0.0, 1.0);
+            if dir.z >= 0.0 {
+                // Sunset (0.0) -> Midnight (0.5)
+                moon_dir.night_progress = 0.5 * height;
+            } else {
+                // Midnight (0.5) -> Sunrise (1.0)
+                moon_dir.night_progress = 0.5 + 0.5 * (1.0 - height);
+            }
+        } else {
+            moon_dir.night_progress = 0.0;
+        }
+    }
+}
+
+pub fn update_moon_material_phase(
+    lunar: Res<LunarClock>,
+    moon_material_q: Query<&MeshMaterial3d<MoonMaterial>>,
+    mut materials: ResMut<Assets<MoonMaterial>>,
+) {
+    let angle = lunar.phase() * TAU;
+    let phase_dir = Vec3::new(angle.sin(), 0.15, -angle.cos()).normalize();
+
+    for handle in &moon_material_q {
+        if let Some(mut mat) = materials.get_mut(handle) {
+            mat.uniforms.moon_dir = phase_dir;
+        }
+    }
+}
+
+pub fn update_moon_phase_light(
+    moon_direction: Res<MoonDirection>,
+    lunar: Res<LunarClock>,
+    player_q: Query<&Transform, (With<Player>, Without<MoonSpotlight>)>,
+    mut spot_q: Query<(&mut SpotLight, &mut Transform), (With<MoonSpotlight>, Without<Player>)>,
+) {
+    let Ok(player_transform) = player_q.single() else { return; };
+
+    let progress = moon_direction.night_progress;
+    let start_threshold = 0.99;
+    let target_threshold = 0.5;
+    let fade_start = 0.49;
+    let fade_end = 0.15;
+    let t_in = ((progress - start_threshold) / (target_threshold - start_threshold)).clamp(0.0, 1.0);
+    let t_out = 1.0 - ((progress - fade_start) / (fade_end - fade_start)).clamp(0.0, 1.0);
+    let t = t_in.min(t_out);
+    let night_eased = t * t * (3.0 - 2.0 * t);
+    let raw_progress = (lunar.illumination() - 0.85) / (0.98 - 0.85);
+    let full_moon_gate = SmoothStepCurve.sample_clamped(raw_progress);
+    let eased = night_eased * full_moon_gate;
+    for (mut spot, mut transform) in &mut spot_q {
+        spot.intensity = eased * 20_000_000.0;
+        spot.color = Color::LinearRgba(LinearRgba::new(
+            0.20 + 0.20 * eased,
+            0.20 + 0.35 * eased,
+            1.0 + 0.60 * eased,
+            1.0,
+        ));
+        let anchor = player_transform.translation + Vec3::new(0.0, 20.0, 0.0);
+        *transform = Transform::from_translation(anchor)
+            .with_rotation(Quat::from_rotation_x(-FRAC_PI_2));
+    }
+}
+
+pub fn apply_moon_direction(
+    moon_dir: Res<MoonDirection>,
+    main_camera_query: Query<&Transform, With<MainCamera>>,
+    mut materials: ResMut<Assets<MoonMaterial>>,
+    mut moon_query: Query<(&mut Transform, &MeshMaterial3d<MoonMaterial>), (With<Moon>, Without<MainCamera>)>,
+) {
+    let Ok(camera_transform) = main_camera_query.single() else { return };
+    let Ok((mut moon_transform, material_handle)) = moon_query.single_mut() else { return };
+
+    let distance = 900.0;
+
+    moon_transform.translation = camera_transform.translation + (moon_dir.dir * distance);
+
+    moon_transform.rotation = Quat::from_rotation_arc(Vec3::Z, -moon_dir.dir);
+
+    if let Some(mut material) = materials.get_mut(&material_handle.0) {
+        material.uniforms.moon_dir = moon_dir.dir;
+    }
+}

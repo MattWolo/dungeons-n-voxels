@@ -6,6 +6,7 @@ pub mod biome_recipes;
 pub mod environment;
 mod moon_material;
 mod voxel_material;
+mod moon_generation;
 
 use bevy::pbr::ExtendedMaterial;
 use bevy::pbr::wireframe::Wireframe;
@@ -183,8 +184,8 @@ fn setup_chunk_material(
         },
         extension: VoxelMaterialExtension {
             settings: VoxelMaterialSettings {
-                distance_start: 240.0,
-                distance_end: 480.0,
+                distance_start: 480.0, //fog
+                distance_end: 500.0,
                 ..default()
             },
             sky_texture: gradient_texture.render_target.clone(),
