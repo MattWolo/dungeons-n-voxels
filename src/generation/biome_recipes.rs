@@ -26,7 +26,7 @@ pub const BIOME_RECIPES: &[BiomeRecipe] = &[
         temp: 0.2,
         moisture: -0.1,
         erosion: 0.5,
-        base_height: 5.0,
+        base_height: 0.0,
         knoll_amplitude: 3.0,
         ridge_amplitude: 2.0,
         surface: VoxelType::Grass,
@@ -48,7 +48,7 @@ pub const BIOME_RECIPES: &[BiomeRecipe] = &[
         temp: -0.2,
         moisture: 0.1,
         erosion: 0.5,
-        base_height: 5.0,
+        base_height: 0.0,
         knoll_amplitude: 2.0,
         ridge_amplitude: 2.0,
         surface: VoxelType::Snow,
@@ -79,6 +79,6 @@ pub const BIOME_RECIPES: &[BiomeRecipe] = &[
 ];
 
 pub struct SampledTerrain {
-    pub height: usize,
+    pub height: i32,
     pub surface: VoxelType,
 }

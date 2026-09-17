@@ -17,13 +17,21 @@ use bevy_sky_gradient::plugin::GradientTextureHandle;
 use futures_lite::future;
 
 use chunk::Chunk;
-use mesh::{build_mesh_from_scratch, THREAD_SCRATCH};
-use voxel_type::{CHUNK_X, CHUNK_Z};
+use mesh::{
+    build_mesh_section_from_scratch,
+    THREAD_SCRATCH,
+};
+use voxel_type::{
+    CHUNK_X,
+    CHUNK_Z,
+    MESH_SECTION_COUNT,
+    WORLD_MIN_Y,
+};
 use crate::generation::voxel_material::{VoxelMaterialExtension, VoxelMaterialSettings};
 use crate::player::Player;
 
-const RENDER_DISTANCE: i32 = 16;
-const UNLOAD_DISTANCE: i32 = 18;
+const RENDER_DISTANCE: i32 = 32;
+const UNLOAD_DISTANCE: i32 = 33;
 pub const WORLD_SEED: u32 = 5345235;
 pub struct ChunkPlugin;
 impl Plugin for ChunkPlugin {
@@ -39,14 +47,21 @@ impl Plugin for ChunkPlugin {
                 ));
     }
 }
+
+pub type SectionMeshes = Vec<(usize, Mesh)>;
 #[derive(Component)]
-pub struct ComputeChunkTask(Task<(IVec2, Mesh)>);
+pub struct ComputeChunkTask(Task<(IVec2, SectionMeshes)>);
 #[derive(Component)]
 pub struct ChunkCoord(pub IVec2);
 #[derive(Resource, Default)]
 pub struct LoadedChunks {
-    pub entities: HashMap<IVec2, Entity>,
+    pub entities: HashMap<IVec2, Vec<Entity>>,
     pub pending: HashSet<IVec2>,
+}
+#[derive(Component, Debug, Clone, Copy)]
+pub struct ChunkSection {
+    pub column: IVec2,
+    pub section_index: usize,
 }
 
 fn spawn_chunk_task(
@@ -79,8 +94,14 @@ fn spawn_chunk_task(
                 Some(&north_edge),
             );
 
-            let mesh = build_mesh_from_scratch(&mut *scratch);
-            (coord, mesh)
+            let mut section_meshes = Vec::with_capacity(MESH_SECTION_COUNT);
+
+            for section_index in 0..MESH_SECTION_COUNT {
+                if let Some(mesh) = build_mesh_section_from_scratch(scratch, section_index) {
+                    section_meshes.push((section_index, mesh));
+                }
+            }
+            (coord, section_meshes)
         })
     });
     commands.spawn((
@@ -132,8 +153,10 @@ fn unload_distant_chunks(
             .map(|(coord, _)| *coord).collect();
 
         for coord in chunks_to_unload {
-            if let Some(entity) = loaded_chunks.entities.remove(&coord) {
-                commands.entity(entity).despawn();
+            if let Some(section_entities) = loaded_chunks.entities.remove(&coord) {
+                for entity in section_entities {
+                    commands.entity(entity).despawn();
+                }
             }
         }
     }
@@ -146,23 +169,36 @@ fn handle_chunk_tasks(
     chunk_material: Res<ChunkMaterial>,
     mut loaded_chunks: ResMut<LoadedChunks>,
 ) {
-    for (entity, mut task) in &mut tasks {
-        if let Some((coord, mesh)) = future::block_on(future::poll_once(&mut task.0)) {
+    for (task_entity, mut task) in &mut tasks {
+        let Some((coord, section_meshes)) = future::block_on(future::poll_once(&mut task.0))
+        else {
+            continue;
+        };
+
+        let mut section_entities = Vec::with_capacity(section_meshes.len());
+
+        for (section_index, mesh) in section_meshes {
             let mesh_entity = commands.spawn((
                 Mesh3d(meshes.add(mesh)),
                 MeshMaterial3d(chunk_material.0.clone()),
                 Transform::from_xyz(
                     coord.x as f32 * CHUNK_X as f32,
-                    0.0,
+                    WORLD_MIN_Y as f32,
                     coord.y as f32 * CHUNK_Z as f32,
                 ),
-                //Wireframe
-            )).id();
 
-            loaded_chunks.pending.remove(&coord);
-            loaded_chunks.entities.insert(coord, mesh_entity);
-            commands.entity(entity).despawn();
+                ChunkSection {
+                    column: coord,
+                    section_index,
+                },
+                //Wireframe
+                )).id();
+            section_entities.push(mesh_entity);
         }
+        loaded_chunks.pending.remove(&coord);
+
+        loaded_chunks.entities.insert(coord, section_entities);
+        commands.entity(task_entity).despawn();
     }
 }
 pub type ChunkMaterialHandle = ExtendedMaterial<StandardMaterial, VoxelMaterialExtension>;
@@ -184,8 +220,8 @@ fn setup_chunk_material(
         },
         extension: VoxelMaterialExtension {
             settings: VoxelMaterialSettings {
-                distance_start: 480.0, //fog
-                distance_end: 500.0,
+                distance_start: 800.0, //fog
+                distance_end: 830.0,
                 ..default()
             },
             sky_texture: gradient_texture.render_target.clone(),
@@ -196,16 +232,19 @@ fn setup_chunk_material(
 
 fn spawn_initial_chunks(
     mut commands: Commands,
-    loaded_chunks: ResMut<LoadedChunks>,
+    mut loaded_chunks: ResMut<LoadedChunks>,
 ) {
     let thread_pool = AsyncComputeTaskPool::get();
     const START_DISTANCE: i32 = 4;
     for cx in -START_DISTANCE..START_DISTANCE {
         for cz in -START_DISTANCE..START_DISTANCE {
             let coord = IVec2::new(cx, cz);
-            if !loaded_chunks.entities.contains_key(&coord) {
-                spawn_chunk_task(&mut commands, coord, thread_pool, WORLD_SEED);
+            if loaded_chunks.entities.contains_key(&coord) || loaded_chunks.pending.contains(&coord) {
+                continue;
             }
+            loaded_chunks.pending.insert(coord);
+
+            spawn_chunk_task(&mut commands, coord, thread_pool, WORLD_SEED);
         }
     }
 }

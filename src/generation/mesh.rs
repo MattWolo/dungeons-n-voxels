@@ -18,7 +18,6 @@ const EXPECTED_AO: usize = 8_192;
 pub type Ao = u8;
 pub struct ChunkMeshScratch {
     pub own_flat: Vec<VoxelType>,
-    pub neighbors: [Vec<VoxelType>; 4],
     pub padded: Vec<VoxelType>,
 
     pub positions: Vec<[f32; 3]>,
@@ -27,11 +26,11 @@ pub struct ChunkMeshScratch {
     pub ao: Vec<Ao>,
     pub indices: Vec<u32>,
 
-    pub mask_y: [u32; CHUNK_Y],
+    pub mask_y: [u32; MESH_SECTION_Y],
     pub mask_z: [u32; CHUNK_Z],
-    pub face_keys_y: [[u16; CHUNK_Z]; CHUNK_Y],
+    pub face_keys_y: [[u16; CHUNK_Z]; MESH_SECTION_Y],
     pub face_keys_z: [[u16; CHUNK_X]; CHUNK_Z],
-    pub face_keys_x: [[u16; CHUNK_X]; CHUNK_Y],
+    pub face_keys_x: [[u16; CHUNK_X]; MESH_SECTION_Y],
 }
 
 pub const ATTRIBUTE_AO: MeshVertexAttribute =
@@ -45,26 +44,22 @@ impl ChunkMeshScratch {
     pub fn new() -> Self {
         Self {
             own_flat: Vec::with_capacity(CHUNK_VOLUME),
-            neighbors: std::array::from_fn(|_| Vec::with_capacity(CHUNK_VOLUME)),
             padded: vec![VoxelType::Air; PADDED_X * PADDED_Y * PADDED_Z],
             positions: Vec::with_capacity(EXPECTED_VERTICES),
             normals: Vec::with_capacity(EXPECTED_VERTICES),
             colors: Vec::with_capacity(EXPECTED_VERTICES),
             ao: Vec::with_capacity(EXPECTED_AO),
-            face_keys_y: [[0u16; CHUNK_Z]; CHUNK_Y],
+            face_keys_y: [[0u16; CHUNK_Z]; MESH_SECTION_Y],
             face_keys_z: [[0u16; CHUNK_X]; CHUNK_Z],
-            face_keys_x: [[0u16; CHUNK_X]; CHUNK_Y],
+            face_keys_x: [[0u16; CHUNK_X]; MESH_SECTION_Y],
             indices: Vec::with_capacity(EXPECTED_INDICES),
-            mask_y: [0u32; CHUNK_Y],
+            mask_y: [0u32; MESH_SECTION_Y],
             mask_z: [0u32; CHUNK_Z],
         }
     }
 
     pub fn clear(&mut self) {
         self.own_flat.clear();
-        for n in &mut self.neighbors{
-            n.clear();
-        }
 
         self.positions.reserve(EXPECTED_VERTICES);
         self.normals.reserve(EXPECTED_VERTICES);
@@ -84,12 +79,33 @@ thread_local! {
     pub static THREAD_SCRATCH: RefCell<ChunkMeshScratch> = RefCell::new(ChunkMeshScratch::new());
 }
 
-pub fn build_mesh_from_scratch(scratch: &mut ChunkMeshScratch) -> Mesh {
-    let _span = info_span!("build_mesh_from_scratch").entered();
-    let mut vertex_offset: u32 = 0;
+pub fn build_mesh_section_from_scratch(
+    scratch: &mut ChunkMeshScratch,
+    section_index: usize,
+) -> Option<Mesh> {
+
+    let _span = info_span!("build_mesh_section_from_scratch").entered();
+    debug_assert!(section_index < MESH_SECTION_COUNT);
+
+    let section_start_y = section_index * MESH_SECTION_Y;
+
+    scratch.positions.clear();
+    scratch.normals.clear();
+    scratch.colors.clear();
+    scratch.ao.clear();
+    scratch.indices.clear();
+
+    scratch.mask_y.fill(0);
+    scratch.mask_z.fill(0);
+    scratch.face_keys_y.fill([0u16; CHUNK_Z]);
+    scratch.face_keys_z.fill([0u16; CHUNK_X]);
+    scratch.face_keys_x.fill([0u16; CHUNK_X]);
+
+    let mut vertex_offset = 0;
 
     mesh_right_faces_binary(
         &scratch.padded,
+        section_start_y,
         &mut scratch.mask_y,
         &mut scratch.face_keys_y,
         &mut scratch.positions,
@@ -97,10 +113,11 @@ pub fn build_mesh_from_scratch(scratch: &mut ChunkMeshScratch) -> Mesh {
         &mut scratch.colors,
         &mut scratch.ao,
         &mut scratch.indices,
-        &mut vertex_offset
+        &mut vertex_offset,
     );
     mesh_left_faces_binary(
         &scratch.padded,
+        section_start_y,
         &mut scratch.mask_y,
         &mut scratch.face_keys_y,
         &mut scratch.positions,
@@ -108,10 +125,11 @@ pub fn build_mesh_from_scratch(scratch: &mut ChunkMeshScratch) -> Mesh {
         &mut scratch.colors,
         &mut scratch.ao,
         &mut scratch.indices,
-        &mut vertex_offset
+        &mut vertex_offset,
     );
     mesh_top_faces_binary(
         &scratch.padded,
+        section_start_y,
         &mut scratch.mask_z,
         &mut scratch.face_keys_z,
         &mut scratch.positions,
@@ -119,11 +137,11 @@ pub fn build_mesh_from_scratch(scratch: &mut ChunkMeshScratch) -> Mesh {
         &mut scratch.colors,
         &mut scratch.ao,
         &mut scratch.indices,
-        &mut vertex_offset
+        &mut vertex_offset,
     );
-
     mesh_bottom_faces_binary(
         &scratch.padded,
+        section_start_y,
         &mut scratch.mask_z,
         &mut scratch.face_keys_z,
         &mut scratch.positions,
@@ -131,49 +149,156 @@ pub fn build_mesh_from_scratch(scratch: &mut ChunkMeshScratch) -> Mesh {
         &mut scratch.colors,
         &mut scratch.ao,
         &mut scratch.indices,
-        &mut vertex_offset
+        &mut vertex_offset,
     );
-
     mesh_front_faces_binary(
         &scratch.padded,
+        section_start_y,
         &mut scratch.mask_y,
-        &mut scratch.face_keys_x,
+        &mut scratch.face_keys_y,
         &mut scratch.positions,
         &mut scratch.normals,
         &mut scratch.colors,
         &mut scratch.ao,
         &mut scratch.indices,
-        &mut vertex_offset
+        &mut vertex_offset,
     );
-
     mesh_back_faces_binary(
         &scratch.padded,
+        section_start_y,
         &mut scratch.mask_y,
-        &mut scratch.face_keys_x,
+        &mut scratch.face_keys_y,
         &mut scratch.positions,
         &mut scratch.normals,
         &mut scratch.colors,
         &mut scratch.ao,
         &mut scratch.indices,
-        &mut vertex_offset
+        &mut vertex_offset,
     );
 
+    if scratch.indices.is_empty() {
+        return None;
+    }
     let mut mesh = Mesh::new(
         PrimitiveTopology::TriangleList,
-        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
     );
-    //println!("Vertices: {}, Indices: {}", scratch.positions.len(), scratch.indices.len());
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, std::mem::take(&mut scratch.positions));
-    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, std::mem::take(&mut scratch.normals));
-    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::mem::take(&mut scratch.colors));
+    mesh.insert_attribute (
+        Mesh::ATTRIBUTE_POSITION,
+        std::mem::take(&mut scratch.positions),
+    );
+    mesh.insert_attribute(
+        Mesh::ATTRIBUTE_NORMAL,
+        std::mem::take(&mut scratch.normals),
+    );
+    mesh.insert_attribute (
+        Mesh::ATTRIBUTE_COLOR,
+        std::mem::take(&mut scratch.colors),
+    );
+
     let ao_normalized: Vec<f32> = std::mem::take(&mut scratch.ao)
-        .into_iter()
-        .map(|occlusion| 1.0 - occlusion as f32 / 3.0)
-        .collect();
-    mesh.insert_attribute(ATTRIBUTE_AO, ao_normalized);
-    mesh.insert_indices(Indices::U32(std::mem::take(&mut scratch.indices)));
-    mesh
+        .into_iter().map(|occlusion| { 1.0 - occlusion as f32 / 3.0}).collect();
+
+    mesh.insert_attribute(
+        ATTRIBUTE_AO,
+        ao_normalized,
+    );
+
+    mesh.insert_indices(Indices::U32(std::mem::take(&mut scratch.indices),));
+
+    Some(mesh)
 }
+
+// pub fn build_mesh_from_scratch(scratch: &mut ChunkMeshScratch) -> Mesh {
+//     let _span = info_span!("build_mesh_from_scratch").entered();
+//     let mut vertex_offset: u32 = 0;
+//
+//     mesh_right_faces_binary(
+//         &scratch.padded,
+//         &mut scratch.mask_y,
+//         &mut scratch.face_keys_y,
+//         &mut scratch.positions,
+//         &mut scratch.normals,
+//         &mut scratch.colors,
+//         &mut scratch.ao,
+//         &mut scratch.indices,
+//         &mut vertex_offset
+//     );
+//     mesh_left_faces_binary(
+//         &scratch.padded,
+//         &mut scratch.mask_y,
+//         &mut scratch.face_keys_y,
+//         &mut scratch.positions,
+//         &mut scratch.normals,
+//         &mut scratch.colors,
+//         &mut scratch.ao,
+//         &mut scratch.indices,
+//         &mut vertex_offset
+//     );
+//     mesh_top_faces_binary(
+//         &scratch.padded,
+//         &mut scratch.mask_z,
+//         &mut scratch.face_keys_z,
+//         &mut scratch.positions,
+//         &mut scratch.normals,
+//         &mut scratch.colors,
+//         &mut scratch.ao,
+//         &mut scratch.indices,
+//         &mut vertex_offset
+//     );
+//
+//     mesh_bottom_faces_binary(
+//         &scratch.padded,
+//         &mut scratch.mask_z,
+//         &mut scratch.face_keys_z,
+//         &mut scratch.positions,
+//         &mut scratch.normals,
+//         &mut scratch.colors,
+//         &mut scratch.ao,
+//         &mut scratch.indices,
+//         &mut vertex_offset
+//     );
+//
+//     mesh_front_faces_binary(
+//         &scratch.padded,
+//         &mut scratch.mask_y,
+//         &mut scratch.face_keys_x,
+//         &mut scratch.positions,
+//         &mut scratch.normals,
+//         &mut scratch.colors,
+//         &mut scratch.ao,
+//         &mut scratch.indices,
+//         &mut vertex_offset
+//     );
+//
+//     mesh_back_faces_binary(
+//         &scratch.padded,
+//         &mut scratch.mask_y,
+//         &mut scratch.face_keys_x,
+//         &mut scratch.positions,
+//         &mut scratch.normals,
+//         &mut scratch.colors,
+//         &mut scratch.ao,
+//         &mut scratch.indices,
+//         &mut vertex_offset
+//     );
+//
+//     let mut mesh = Mesh::new(
+//         PrimitiveTopology::TriangleList,
+//         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD
+//     );
+//     //println!("Vertices: {}, Indices: {}", scratch.positions.len(), scratch.indices.len());
+//     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, std::mem::take(&mut scratch.positions));
+//     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, std::mem::take(&mut scratch.normals));
+//     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::mem::take(&mut scratch.colors));
+//     let ao_normalized: Vec<f32> = std::mem::take(&mut scratch.ao)
+//         .into_iter()
+//         .map(|occlusion| 1.0 - occlusion as f32 / 3.0)
+//         .collect();
+//     mesh.insert_attribute(ATTRIBUTE_AO, ao_normalized);
+//     mesh.insert_indices(Indices::U32(std::mem::take(&mut scratch.indices)));
+//     mesh
+// }
 
 // RIGHT   +X => px + 1
 // LEFT    -X => px - 1
@@ -186,8 +311,9 @@ pub fn build_mesh_from_scratch(scratch: &mut ChunkMeshScratch) -> Mesh {
 
 pub fn mesh_right_faces_binary(
     padded: &[VoxelType],
-    masks: &mut [u32; CHUNK_Y],
-    face_keys: &mut [[u16; CHUNK_Z]; CHUNK_Y],
+    section_start_y: usize,
+    masks: &mut [u32; MESH_SECTION_Y],
+    face_keys: &mut [[u16; CHUNK_Z]; MESH_SECTION_Y],
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
     colors: &mut Vec<[f32; 4]>,
@@ -198,7 +324,8 @@ pub fn mesh_right_faces_binary(
     for x in 0..CHUNK_X {
         masks.fill(0);
         face_keys.fill([0u16; CHUNK_Z]);
-        for y in 0..CHUNK_Y {
+        for section_y in 0..MESH_SECTION_Y {
+            let y = section_start_y + section_y;
             let mut row_mask = 0u32;
 
             for z in 0..CHUNK_Z {
@@ -209,33 +336,33 @@ pub fn mesh_right_faces_binary(
                 let voxel = padded[padded_index(px, py, pz)];
 
                 if voxel == VoxelType::Air
-                    || is_solid(padded, px + 1, py, pz)
+                    || VoxelType::is_solid(padded, px + 1, py, pz)
                 {
                     continue;
                 }
 
                 let ao0 = vertex_ao(
-                    is_solid(padded, px + 1, py - 1, pz),
-                    is_solid(padded, px + 1, py, pz + 1),
-                    is_solid(padded, px + 1, py - 1, pz + 1),
+                    VoxelType::is_solid(padded, px + 1, py - 1, pz),
+                    VoxelType::is_solid(padded, px + 1, py, pz + 1),
+                    VoxelType::is_solid(padded, px + 1, py - 1, pz + 1),
                 );
 
                 let ao1 = vertex_ao(
-                    is_solid(padded, px + 1, py - 1, pz),
-                    is_solid(padded, px + 1, py, pz - 1),
-                    is_solid(padded, px + 1, py - 1, pz - 1),
+                    VoxelType::is_solid(padded, px + 1, py - 1, pz),
+                    VoxelType::is_solid(padded, px + 1, py, pz - 1),
+                    VoxelType::is_solid(padded, px + 1, py - 1, pz - 1),
                 );
 
                 let ao2 = vertex_ao(
-                    is_solid(padded, px + 1, py + 1, pz),
-                    is_solid(padded, px + 1, py, pz - 1),
-                    is_solid(padded, px + 1, py + 1, pz - 1),
+                    VoxelType::is_solid(padded, px + 1, py + 1, pz),
+                    VoxelType::is_solid(padded, px + 1, py, pz - 1),
+                    VoxelType::is_solid(padded, px + 1, py + 1, pz - 1),
                 );
 
                 let ao3 = vertex_ao(
-                    is_solid(padded, px + 1, py + 1, pz),
-                    is_solid(padded, px + 1, py, pz + 1),
-                    is_solid(padded, px + 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px + 1, py + 1, pz),
+                    VoxelType::is_solid(padded, px + 1, py, pz + 1),
+                    VoxelType::is_solid(padded, px + 1, py + 1, pz + 1),
                 );
 
                 let ao_mask =
@@ -244,11 +371,11 @@ pub fn mesh_right_faces_binary(
                         | (ao2 << 4)
                         | (ao3 << 6);
 
-                face_keys[y][z] = pack_face_key(voxel, ao_mask);
+                face_keys[section_y][z] = pack_face_key(voxel, ao_mask);
 
                 row_mask |= 1u32 << z;
             }
-            masks[y] = row_mask;
+            masks[section_y] = row_mask;
         }
         // RIGHT:
         //
@@ -271,11 +398,11 @@ pub fn mesh_right_faces_binary(
                 bottom_right: 3,
                 bottom_left: 2,
             },
-            |y_start, z_start, width, depth, corner_keys| {
+            |section_y_start, z_start, width, depth, corner_keys| {
                 let min_z = z_start as f32 - 0.5;
                 let max_z = min_z + width as f32;
 
-                let min_y = y_start as f32 - 0.5;
+                let min_y = (section_start_y + section_y_start) as f32 - 0.5;
                 let max_y = min_y + depth as f32;
 
                 let fx = x as f32 + 0.5;
@@ -342,8 +469,9 @@ pub fn mesh_right_faces_binary(
 }
 pub fn mesh_left_faces_binary(
     padded: &[VoxelType],
-    masks: &mut [u32; CHUNK_Y],
-    face_keys: &mut [[u16; CHUNK_Z]; CHUNK_Y],
+    section_start_y: usize,
+    masks: &mut [u32; MESH_SECTION_Y],
+    face_keys: &mut [[u16; CHUNK_Z]; MESH_SECTION_Y],
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
     colors: &mut Vec<[f32; 4]>,
@@ -354,7 +482,8 @@ pub fn mesh_left_faces_binary(
     for x in 0..CHUNK_X {
         masks.fill(0);
         face_keys.fill([0u16; CHUNK_Z]);
-        for y in 0..CHUNK_Y {
+        for section_y in 0..MESH_SECTION_Y {
+            let y = section_start_y + section_y;
             let mut row_mask = 0u32;
 
             for z in 0..CHUNK_Z {
@@ -365,33 +494,33 @@ pub fn mesh_left_faces_binary(
                 let voxel = padded[padded_index(px, py, pz)];
 
                 if voxel == VoxelType::Air
-                    || is_solid(padded, px - 1, py, pz)
+                    || VoxelType::is_solid(padded, px - 1, py, pz)
                 {
                     continue;
                 }
 
                 let ao0 = vertex_ao(
-                    is_solid(padded, px - 1, py - 1, pz),
-                    is_solid(padded, px - 1, py, pz - 1),
-                    is_solid(padded, px - 1, py - 1, pz - 1),
+                    VoxelType::is_solid(padded, px - 1, py - 1, pz),
+                    VoxelType::is_solid(padded, px - 1, py, pz - 1),
+                    VoxelType::is_solid(padded, px - 1, py - 1, pz - 1),
                 );
 
                 let ao1 = vertex_ao(
-                    is_solid(padded, px - 1, py - 1, pz),
-                    is_solid(padded, px - 1, py, pz + 1),
-                    is_solid(padded, px - 1, py - 1, pz + 1),
+                    VoxelType::is_solid(padded, px - 1, py - 1, pz),
+                    VoxelType::is_solid(padded, px - 1, py, pz + 1),
+                    VoxelType::is_solid(padded, px - 1, py - 1, pz + 1),
                 );
 
                 let ao2 = vertex_ao(
-                    is_solid(padded, px - 1, py + 1, pz),
-                    is_solid(padded, px - 1, py, pz + 1),
-                    is_solid(padded, px - 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px - 1, py + 1, pz),
+                    VoxelType::is_solid(padded, px - 1, py, pz + 1),
+                    VoxelType::is_solid(padded, px - 1, py + 1, pz + 1),
                 );
 
                 let ao3 = vertex_ao(
-                    is_solid(padded, px - 1, py + 1, pz),
-                    is_solid(padded, px - 1, py, pz - 1),
-                    is_solid(padded, px - 1, py + 1, pz - 1),
+                    VoxelType::is_solid(padded, px - 1, py + 1, pz),
+                    VoxelType::is_solid(padded, px - 1, py, pz - 1),
+                    VoxelType::is_solid(padded, px - 1, py + 1, pz - 1),
                 );
 
                 let ao_mask =
@@ -400,11 +529,11 @@ pub fn mesh_left_faces_binary(
                         |   (ao2 << 4)
                         |   (ao3 << 6);
 
-                face_keys[y][z] = pack_face_key(voxel, ao_mask);
+                face_keys[section_y][z] = pack_face_key(voxel, ao_mask);
 
                 row_mask |= 1u32 << z;
             }
-            masks[y] = row_mask;
+            masks[section_y] = row_mask;
         }
         // LEFT:
         //
@@ -427,11 +556,11 @@ pub fn mesh_left_faces_binary(
                 bottom_right: 2,
                 bottom_left: 3,
             },
-            |y_start, z_start, width, depth, corner_keys| {
+            |section_y_start, z_start, width, depth, corner_keys| {
                 let min_z = z_start as f32 - 0.5;
                 let max_z = min_z + width as f32;
 
-                let min_y = y_start as f32 - 0.5;
+                let min_y = (section_start_y + section_y_start) as f32 - 0.5;
                 let max_y = min_y + depth as f32;
 
                 let fx = x as f32 - 0.5;
@@ -498,6 +627,7 @@ pub fn mesh_left_faces_binary(
 }
 pub fn mesh_top_faces_binary(
     padded: &[VoxelType],
+    section_start_y: usize,
     masks: &mut [u32; CHUNK_Z],
     face_keys: &mut [[u16; CHUNK_X]; CHUNK_Z],
     positions: &mut Vec<[f32; 3]>,
@@ -507,7 +637,8 @@ pub fn mesh_top_faces_binary(
     indices: &mut Vec<u32>,
     vertex_offset: &mut u32,
 ) {
-    for y in 0..CHUNK_Y {
+    for section_y in 0..MESH_SECTION_Y {
+        let y = section_start_y + section_y;
         masks.fill(0);
         face_keys.fill([0u16; CHUNK_X]);
         for z in 0..CHUNK_Z {
@@ -521,33 +652,33 @@ pub fn mesh_top_faces_binary(
                 let voxel = padded[padded_index(px, py, pz)];
 
                 if voxel == VoxelType::Air
-                    || is_solid(padded, px, py + 1, pz)
+                    || VoxelType::is_solid(padded, px, py + 1, pz)
                 {
                     continue;
                 }
 
                 let ao0 = vertex_ao(
-                    is_solid(padded, px - 1, py + 1, pz),
-                    is_solid(padded, px,       py + 1, pz + 1),
-                    is_solid(padded, px - 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px - 1, py + 1, pz),
+                    VoxelType::is_solid(padded, px,       py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px - 1, py + 1, pz + 1),
                 );
 
                 let ao1 = vertex_ao(
-                    is_solid(padded, px + 1, py + 1, pz),
-                    is_solid(padded, px,        py + 1, pz + 1),
-                    is_solid(padded, px + 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px + 1, py + 1, pz),
+                    VoxelType::is_solid(padded, px,        py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px + 1, py + 1, pz + 1),
                 );
 
                 let ao2 = vertex_ao(
-                    is_solid(padded, px + 1, py + 1, pz),
-                    is_solid(padded, px,       py + 1, pz - 1),
-                    is_solid(padded, px + 1, py + 1, pz - 1),
+                    VoxelType::is_solid(padded, px + 1, py + 1, pz),
+                    VoxelType::is_solid(padded, px,       py + 1, pz - 1),
+                    VoxelType::is_solid(padded, px + 1, py + 1, pz - 1),
                 );
 
                 let ao3 = vertex_ao(
-                    is_solid(padded, px - 1, py + 1, pz),
-                    is_solid(padded, px,      py + 1, pz - 1),
-                    is_solid(padded, px - 1, py + 1, pz - 1),
+                    VoxelType::is_solid(padded, px - 1, py + 1, pz),
+                    VoxelType::is_solid(padded, px,      py + 1, pz - 1),
+                    VoxelType::is_solid(padded, px - 1, py + 1, pz - 1),
                 );
 
                 let ao_mask =
@@ -654,6 +785,7 @@ pub fn mesh_top_faces_binary(
 }
 pub fn mesh_bottom_faces_binary(
     padded: &[VoxelType],
+    section_start_y: usize,
     masks: &mut [u32; CHUNK_Z],
     face_keys: &mut [[u16; CHUNK_X]; CHUNK_Z],
     positions: &mut Vec<[f32; 3]>,
@@ -663,7 +795,8 @@ pub fn mesh_bottom_faces_binary(
     indices: &mut Vec<u32>,
     vertex_offset: &mut u32,
 ) {
-    for y in 0..CHUNK_Y {
+    for section_y in 0..MESH_SECTION_Y {
+        let y = section_start_y + section_y;
         masks.fill(0);
         face_keys.fill([0u16; CHUNK_X]);
         for z in 0..CHUNK_Z {
@@ -677,33 +810,33 @@ pub fn mesh_bottom_faces_binary(
                 let voxel = padded[padded_index(px, py, pz)];
 
                 if voxel == VoxelType::Air
-                    || is_solid(padded, px, py - 1, pz)
+                    || VoxelType::is_solid(padded, px, py - 1, pz)
                 {
                     continue;
                 }
 
                 let ao0 = vertex_ao(
-                    is_solid(padded, px - 1, py - 1, pz),
-                    is_solid(padded, px, py - 1, pz - 1),
-                    is_solid(padded, px - 1, py - 1, pz - 1),
+                    VoxelType::is_solid(padded, px - 1, py - 1, pz),
+                    VoxelType::is_solid(padded, px, py - 1, pz - 1),
+                    VoxelType::is_solid(padded, px - 1, py - 1, pz - 1),
                 );
 
                 let ao1 = vertex_ao(
-                    is_solid(padded, px + 1, py - 1, pz),
-                    is_solid(padded, px, py - 1, pz - 1),
-                    is_solid(padded, px + 1, py - 1, pz - 1),
+                    VoxelType::is_solid(padded, px + 1, py - 1, pz),
+                    VoxelType::is_solid(padded, px, py - 1, pz - 1),
+                    VoxelType::is_solid(padded, px + 1, py - 1, pz - 1),
                 );
 
                 let ao2 = vertex_ao(
-                    is_solid(padded, px + 1, py - 1, pz),
-                    is_solid(padded, px, py - 1, pz + 1),
-                    is_solid(padded, px + 1, py - 1, pz + 1),
+                    VoxelType::is_solid(padded, px + 1, py - 1, pz),
+                    VoxelType::is_solid(padded, px, py - 1, pz + 1),
+                    VoxelType::is_solid(padded, px + 1, py - 1, pz + 1),
                 );
 
                 let ao3 = vertex_ao(
-                    is_solid(padded, px - 1, py - 1, pz),
-                    is_solid(padded, px, py - 1, pz + 1),
-                    is_solid(padded, px - 1, py - 1, pz + 1),
+                    VoxelType::is_solid(padded, px - 1, py - 1, pz),
+                    VoxelType::is_solid(padded, px, py - 1, pz + 1),
+                    VoxelType::is_solid(padded, px - 1, py - 1, pz + 1),
                 );
 
                 let ao_mask =
@@ -811,8 +944,9 @@ pub fn mesh_bottom_faces_binary(
 
 pub fn mesh_front_faces_binary(
     padded: &[VoxelType],
-    masks: &mut [u32; CHUNK_Y],
-    face_keys: &mut [[u16; CHUNK_X]; CHUNK_Y],
+    section_start_y: usize,
+    masks: &mut [u32; MESH_SECTION_Y],
+    face_keys: &mut [[u16; CHUNK_X]; MESH_SECTION_Y],
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
     colors: &mut Vec<[f32; 4]>,
@@ -823,7 +957,8 @@ pub fn mesh_front_faces_binary(
     for z in 0..CHUNK_Z {
         masks.fill(0);
         face_keys.fill([0u16; CHUNK_X]);
-        for y in 0..CHUNK_Y {
+        for section_y in 0..MESH_SECTION_Y {
+            let y = section_start_y + section_y;
             let mut row_mask = 0u32;
 
             for x in 0..CHUNK_X {
@@ -834,33 +969,33 @@ pub fn mesh_front_faces_binary(
                 let voxel = padded[padded_index(px, py, pz)];
 
                 if voxel == VoxelType::Air
-                    || is_solid(padded, px, py, pz - 1)
+                    || VoxelType::is_solid(padded, px, py, pz - 1)
                 {
                     continue;
                 }
 
                 let ao0 = vertex_ao(
-                    is_solid(padded, px + 1, py, pz - 1),
-                    is_solid(padded, px, py - 1, pz - 1),
-                    is_solid(padded, px + 1, py - 1, pz - 1),
+                    VoxelType::is_solid(padded, px + 1, py, pz - 1),
+                    VoxelType::is_solid(padded, px, py - 1, pz - 1),
+                    VoxelType::is_solid(padded, px + 1, py - 1, pz - 1),
                 );
 
                 let ao1 = vertex_ao(
-                    is_solid(padded, px - 1, py, pz - 1),
-                    is_solid(padded, px, py - 1, pz - 1),
-                    is_solid(padded, px - 1, py - 1, pz - 1),
+                    VoxelType::is_solid(padded, px - 1, py, pz - 1),
+                    VoxelType::is_solid(padded, px, py - 1, pz - 1),
+                    VoxelType::is_solid(padded, px - 1, py - 1, pz - 1),
                 );
 
                 let ao2 = vertex_ao(
-                    is_solid(padded, px - 1, py, pz - 1),
-                    is_solid(padded, px, py + 1, pz - 1),
-                    is_solid(padded, px - 1, py + 1, pz - 1),
+                    VoxelType::is_solid(padded, px - 1, py, pz - 1),
+                    VoxelType::is_solid(padded, px, py + 1, pz - 1),
+                    VoxelType::is_solid(padded, px - 1, py + 1, pz - 1),
                 );
 
                 let ao3 = vertex_ao(
-                    is_solid(padded, px + 1, py, pz - 1),
-                    is_solid(padded, px, py + 1, pz - 1),
-                    is_solid(padded, px + 1, py + 1, pz - 1),
+                    VoxelType::is_solid(padded, px + 1, py, pz - 1),
+                    VoxelType::is_solid(padded, px, py + 1, pz - 1),
+                    VoxelType::is_solid(padded, px + 1, py + 1, pz - 1),
                 );
 
                 let ao_mask =
@@ -869,11 +1004,11 @@ pub fn mesh_front_faces_binary(
                         |   (ao2 << 4)
                         |   (ao3 << 6);
 
-                face_keys[y][x] = pack_face_key(voxel, ao_mask);
+                face_keys[section_y][x] = pack_face_key(voxel, ao_mask);
 
                 row_mask |= 1u32 << x;
             }
-            masks[y] = row_mask;
+            masks[section_y] = row_mask;
         }
         // FRONT:
         //
@@ -896,11 +1031,11 @@ pub fn mesh_front_faces_binary(
                 bottom_right: 3,
                 bottom_left: 2,
             },
-            |y_start, x_start, width, depth, corner_keys| {
+            |section_y_start, x_start, width, depth, corner_keys| {
                 let min_x = x_start as f32 - 0.5;
                 let max_x = min_x + width as f32;
 
-                let min_y = y_start as f32 - 0.5;
+                let min_y = (section_start_y + section_y_start) as f32 - 0.5;
                 let max_y = min_y + depth as f32;
 
                 let fz = z as f32 - 0.5;
@@ -968,8 +1103,9 @@ pub fn mesh_front_faces_binary(
 
 pub fn mesh_back_faces_binary(
     padded: &[VoxelType],
-    masks: &mut [u32; CHUNK_Y],
-    face_keys: &mut [[u16; CHUNK_X]; CHUNK_Y],
+    section_start_y: usize,
+    masks: &mut [u32; MESH_SECTION_Y],
+    face_keys: &mut [[u16; CHUNK_X]; MESH_SECTION_Y],
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
     colors: &mut Vec<[f32; 4]>,
@@ -980,7 +1116,8 @@ pub fn mesh_back_faces_binary(
     for z in 0..CHUNK_Z {
         masks.fill(0);
         face_keys.fill([0u16; CHUNK_X]);
-        for y in 0..CHUNK_Y {
+        for section_y in 0..MESH_SECTION_Y {
+            let y = section_start_y + section_y;
             let mut row_mask = 0u32;
 
             for x in 0..CHUNK_X {
@@ -991,33 +1128,33 @@ pub fn mesh_back_faces_binary(
                 let voxel = padded[padded_index(px, py, pz)];
 
                 if voxel == VoxelType::Air
-                    || is_solid(padded, px, py, pz + 1)
+                    || VoxelType::is_solid(padded, px, py, pz + 1)
                 {
                     continue;
                 }
 
                 let ao0 = vertex_ao(
-                    is_solid(padded, px - 1, py + 1, pz + 1),
-                    is_solid(padded, px, py + 1, pz + 1),
-                    is_solid(padded, px - 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px - 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px - 1, py + 1, pz + 1),
                 );
 
                 let ao1 = vertex_ao(
-                    is_solid(padded, px + 1, py + 1, pz + 1),
-                    is_solid(padded, px, py + 1, pz + 1),
-                    is_solid(padded, px + 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px + 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px + 1, py + 1, pz + 1),
                 );
 
                 let ao2 = vertex_ao(
-                    is_solid(padded, px + 1, py + 1, pz + 1),
-                    is_solid(padded, px, py + 1, pz + 1),
-                    is_solid(padded, px + 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px + 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px + 1, py + 1, pz + 1),
                 );
 
                 let ao3 = vertex_ao(
-                    is_solid(padded, px - 1, py + 1, pz + 1),
-                    is_solid(padded, px, py + 1, pz + 1),
-                    is_solid(padded, px - 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px - 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px - 1, py + 1, pz + 1),
                 );
 
                 let ao_mask =
@@ -1026,11 +1163,11 @@ pub fn mesh_back_faces_binary(
                         |   (ao2 << 4)
                         |   (ao3 << 6);
 
-                face_keys[y][x] = pack_face_key(voxel, ao_mask);
+                face_keys[section_y][x] = pack_face_key(voxel, ao_mask);
 
                 row_mask |= 1u32 << x;
             }
-            masks[y] = row_mask;
+            masks[section_y] = row_mask;
         }
         // BACK:
         //
@@ -1053,11 +1190,11 @@ pub fn mesh_back_faces_binary(
                 bottom_right: 1,
                 bottom_left: 0,
             },
-            |y_start, x_start, width, depth, corner_keys| {
+            |section_y_start, x_start, width, depth, corner_keys| {
                 let min_x = x_start as f32 - 0.5;
                 let max_x = min_x + width as f32;
 
-                let min_y = y_start as f32 - 0.5;
+                let min_y = (section_start_y + section_y_start) as f32 - 0.5;
                 let max_y = min_y + depth as f32;
 
                 let fz = z as f32 + 0.5;
@@ -1134,16 +1271,6 @@ fn vertex_ao(
     } else {
         side1 as u8 + side2 as u8 + corner as u8
     }
-}
-
-#[inline]
-fn is_solid(
-    padded: &[VoxelType],
-    x: usize,
-    y: usize,
-    z: usize,
-) -> bool {
-    padded[padded_index(x, y, z)] != VoxelType::Air
 }
 
 #[inline]

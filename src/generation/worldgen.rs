@@ -48,7 +48,7 @@ pub fn sample_terrain(world_x: f32, world_z: f32, seed: u32) -> SampledTerrain {
     let knoll = billow_knoll(world_x, world_z, seed) * knoll_amp;
     let ridge = fbm(world_x * 0.002, world_z * 0.002, 3, 0.5, 2.0, seed.wrapping_add(300)).abs() * ridge_amp;
 
-    let final_height = (base + rolling + knoll + ridge).clamp(0.0, CHUNK_Y as f32) as usize;
+    let final_height = (base + rolling + knoll + ridge).clamp(0.0, CHUNK_Y as f32) as i32;
 
     SampledTerrain {
         height: final_height,

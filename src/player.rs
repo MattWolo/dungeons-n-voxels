@@ -24,7 +24,7 @@ fn spawn_player(
         commands.spawn((
             Mesh3d(meshes.add(Mesh::from(Cuboid::from_length(2.0)))),
             MeshMaterial3d(materials.add(Color::WHITE)),
-            Transform::from_xyz(0.0, 45.0, 0.0),
+            Transform::from_xyz(0.0, 65.0, 0.0),
             Player,
     )).id();
 

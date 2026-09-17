@@ -6,6 +6,8 @@ pub const PADDED_X: usize = CHUNK_X + 2;
 pub const PADDED_Y: usize = CHUNK_Y + 2;
 pub const PADDED_Z: usize = CHUNK_Z + 2;
 
+pub const WORLD_BOTTOM_Y: usize = 0;
+
 #[derive(Debug, Clone)]
 pub struct Run {
     pub value: VoxelType,
@@ -24,8 +26,9 @@ impl Chunk {
                 let world_x = (chunk_x * CHUNK_X as i32 + x as i32) as f32;
                 let world_z = (chunk_z * CHUNK_Z as i32 + z as i32) as f32;
                 let sampled = sample_terrain(world_x, world_z, world_seed);
-                for y in 0..CHUNK_Y {
-                    let voxel = if y < sampled.height {
+                for local_y in 0..CHUNK_Y {
+                    let world_y = local_y_to_world_y(local_y);
+                    let voxel = if world_y < sampled.height {
                         sampled.surface
                     } else {
                         VoxelType::Air
@@ -109,7 +112,14 @@ impl Chunk {
     pub fn generate_border_column(world_x: f32, world_z: f32, seed: u32) -> Vec<VoxelType> {
         let sampled = sample_terrain(world_x, world_z, seed);
         (0..CHUNK_Y)
-            .map(|y| if y < sampled.height { sampled.surface } else { VoxelType::Air })
+            .map(|local_y| {
+                let world_y = local_y_to_world_y(local_y);
+                if world_y < sampled.height {
+                    sampled.surface
+                } else {
+                    VoxelType::Air
+                }
+            })
             .collect()
     }
 
