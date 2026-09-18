@@ -3,6 +3,7 @@ use bevy::render::render_resource::PrimitiveTopology;
 use bevy::asset::RenderAssetUsages;
 use std::cell::RefCell;
 use tracing::info_span;
+use crate::generation::BuiltSectionMesh;
 use super::voxel_type::*;
 use super::chunk::{padded_index, PADDED_X, PADDED_Y, PADDED_Z};
 const RIGHT_NORMAL: [f32; 3] = [1.0, 0.0, 0.0];
@@ -82,7 +83,7 @@ thread_local! {
 pub fn build_mesh_section_from_scratch(
     scratch: &mut ChunkMeshScratch,
     section_index: usize,
-) -> Option<Mesh> {
+) -> Option<BuiltSectionMesh> {
 
     let _span = info_span!("build_mesh_section_from_scratch").entered();
     debug_assert!(section_index < MESH_SECTION_COUNT);
@@ -181,8 +182,12 @@ pub fn build_mesh_section_from_scratch(
     }
     let mut mesh = Mesh::new(
         PrimitiveTopology::TriangleList,
-        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+        RenderAssetUsages::RENDER_WORLD,
     );
+
+    let triangle_count = scratch.indices.len() / 3;
+    let vertex_count = scratch.positions.len();
+
     mesh.insert_attribute (
         Mesh::ATTRIBUTE_POSITION,
         std::mem::take(&mut scratch.positions),
@@ -206,99 +211,13 @@ pub fn build_mesh_section_from_scratch(
 
     mesh.insert_indices(Indices::U32(std::mem::take(&mut scratch.indices),));
 
-    Some(mesh)
+    Some(BuiltSectionMesh {
+        section_index,
+        mesh,
+        triangle_count,
+        vertex_count,
+    })
 }
-
-// pub fn build_mesh_from_scratch(scratch: &mut ChunkMeshScratch) -> Mesh {
-//     let _span = info_span!("build_mesh_from_scratch").entered();
-//     let mut vertex_offset: u32 = 0;
-//
-//     mesh_right_faces_binary(
-//         &scratch.padded,
-//         &mut scratch.mask_y,
-//         &mut scratch.face_keys_y,
-//         &mut scratch.positions,
-//         &mut scratch.normals,
-//         &mut scratch.colors,
-//         &mut scratch.ao,
-//         &mut scratch.indices,
-//         &mut vertex_offset
-//     );
-//     mesh_left_faces_binary(
-//         &scratch.padded,
-//         &mut scratch.mask_y,
-//         &mut scratch.face_keys_y,
-//         &mut scratch.positions,
-//         &mut scratch.normals,
-//         &mut scratch.colors,
-//         &mut scratch.ao,
-//         &mut scratch.indices,
-//         &mut vertex_offset
-//     );
-//     mesh_top_faces_binary(
-//         &scratch.padded,
-//         &mut scratch.mask_z,
-//         &mut scratch.face_keys_z,
-//         &mut scratch.positions,
-//         &mut scratch.normals,
-//         &mut scratch.colors,
-//         &mut scratch.ao,
-//         &mut scratch.indices,
-//         &mut vertex_offset
-//     );
-//
-//     mesh_bottom_faces_binary(
-//         &scratch.padded,
-//         &mut scratch.mask_z,
-//         &mut scratch.face_keys_z,
-//         &mut scratch.positions,
-//         &mut scratch.normals,
-//         &mut scratch.colors,
-//         &mut scratch.ao,
-//         &mut scratch.indices,
-//         &mut vertex_offset
-//     );
-//
-//     mesh_front_faces_binary(
-//         &scratch.padded,
-//         &mut scratch.mask_y,
-//         &mut scratch.face_keys_x,
-//         &mut scratch.positions,
-//         &mut scratch.normals,
-//         &mut scratch.colors,
-//         &mut scratch.ao,
-//         &mut scratch.indices,
-//         &mut vertex_offset
-//     );
-//
-//     mesh_back_faces_binary(
-//         &scratch.padded,
-//         &mut scratch.mask_y,
-//         &mut scratch.face_keys_x,
-//         &mut scratch.positions,
-//         &mut scratch.normals,
-//         &mut scratch.colors,
-//         &mut scratch.ao,
-//         &mut scratch.indices,
-//         &mut vertex_offset
-//     );
-//
-//     let mut mesh = Mesh::new(
-//         PrimitiveTopology::TriangleList,
-//         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD
-//     );
-//     //println!("Vertices: {}, Indices: {}", scratch.positions.len(), scratch.indices.len());
-//     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, std::mem::take(&mut scratch.positions));
-//     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, std::mem::take(&mut scratch.normals));
-//     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::mem::take(&mut scratch.colors));
-//     let ao_normalized: Vec<f32> = std::mem::take(&mut scratch.ao)
-//         .into_iter()
-//         .map(|occlusion| 1.0 - occlusion as f32 / 3.0)
-//         .collect();
-//     mesh.insert_attribute(ATTRIBUTE_AO, ao_normalized);
-//     mesh.insert_indices(Indices::U32(std::mem::take(&mut scratch.indices)));
-//     mesh
-// }
 
 // RIGHT   +X => px + 1
 // LEFT    -X => px - 1
@@ -1134,27 +1053,27 @@ pub fn mesh_back_faces_binary(
                 }
 
                 let ao0 = vertex_ao(
-                    VoxelType::is_solid(padded, px - 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px - 1, py, pz + 1),
                     VoxelType::is_solid(padded, px, py + 1, pz + 1),
                     VoxelType::is_solid(padded, px - 1, py + 1, pz + 1),
                 );
 
                 let ao1 = vertex_ao(
-                    VoxelType::is_solid(padded, px + 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px + 1, py, pz + 1),
                     VoxelType::is_solid(padded, px, py + 1, pz + 1),
                     VoxelType::is_solid(padded, px + 1, py + 1, pz + 1),
                 );
 
                 let ao2 = vertex_ao(
-                    VoxelType::is_solid(padded, px + 1, py + 1, pz + 1),
-                    VoxelType::is_solid(padded, px, py + 1, pz + 1),
-                    VoxelType::is_solid(padded, px + 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px + 1, py, pz + 1),
+                    VoxelType::is_solid(padded, px, py - 1, pz + 1),
+                    VoxelType::is_solid(padded, px + 1, py - 1, pz + 1),
                 );
 
                 let ao3 = vertex_ao(
-                    VoxelType::is_solid(padded, px - 1, py + 1, pz + 1),
-                    VoxelType::is_solid(padded, px, py + 1, pz + 1),
-                    VoxelType::is_solid(padded, px - 1, py + 1, pz + 1),
+                    VoxelType::is_solid(padded, px - 1, py, pz + 1),
+                    VoxelType::is_solid(padded, px, py - 1, pz + 1),
+                    VoxelType::is_solid(padded, px - 1, py - 1, pz + 1),
                 );
 
                 let ao_mask =

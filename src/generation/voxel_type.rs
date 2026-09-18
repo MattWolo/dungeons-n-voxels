@@ -6,7 +6,7 @@ pub const CHUNK_Z: usize = 32;
 pub const CHUNK_VOLUME: usize = CHUNK_X * CHUNK_Y * CHUNK_Z;
 pub const WORLD_MIN_Y: i32 = -128;
 pub const WORLD_MAX_Y_EXCLUSIVE: i32 = WORLD_MIN_Y + CHUNK_Y as i32;
-pub const MESH_SECTION_Y: usize = 64;
+pub const MESH_SECTION_Y: usize = 128;
 pub const MESH_SECTION_COUNT: usize = CHUNK_Y / MESH_SECTION_Y;
 
 #[inline]

@@ -3,7 +3,7 @@ use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::render::mesh::Indices;
 use crate::generation::biome_recipes::{BiomeRecipe};
 use crate::generation::voxel_type::{CHUNK_X, CHUNK_Z};
-use crate::generation::WORLD_SEED;
+use crate::generation::{ChunkMeshStats, WORLD_SEED};
 use crate::generation::worldgen::sample_biome;
 use crate::PerfUi;
 use crate::player::Player;
@@ -85,29 +85,25 @@ fn update_player_info(
 
 fn update_perf_stats(
     diagnostics: Res<DiagnosticsStore>,
-    meshes: Res<Assets<Mesh>>,
-    mesh_query: Query<&Mesh3d>,
+    chunk_mesh_stats: Query<&ChunkMeshStats>,
     mut text_query: Query<&mut Text, With<PerfUi>>,
 ) {
+    let mut triangle_count = 0usize;
+    let mut vertex_count = 0usize;
+    let mut mesh_section_count = 0usize;
+
     let fps = diagnostics
         .get(&FrameTimeDiagnosticsPlugin::FPS)
         .and_then(|diag| diag.smoothed())
         .unwrap_or(0.0);
 
-    let mut total_triangles = 0;
-    for mesh_handle in &mesh_query {
-        if let Some(mesh) = meshes.get(mesh_handle) {
-            if let Some(indices) = mesh.indices() {
-                let index_count = match indices {
-                    Indices::U16(vec) => vec.len(),
-                    Indices::U32(vec) => vec.len(),
-                };
-                total_triangles += index_count / 3;
-            }
-        }
+    for stats in &chunk_mesh_stats {
+        triangle_count += stats.triangles;
+        vertex_count += stats.vertices;
+        mesh_section_count += 1;
     }
 
     for mut text in &mut text_query {
-        **text = format!("FPS: {fps:.0} | Triangles: {total_triangles}");
+        **text = format!("FPS: {fps:.0} | Triangles: {triangle_count} | Sections: {mesh_section_count}");
     }
 }

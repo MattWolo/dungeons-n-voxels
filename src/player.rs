@@ -1,4 +1,6 @@
+use bevy::core_pipeline::prepass::DepthPrepass;
 use bevy::prelude::*;
+use bevy::render::occlusion_culling::OcclusionCulling;
 use bevy_sky_gradient::plugin::SkyboxMagnetTag;
 use third_person_camera as tp_cam;
 use third_person_camera::TargetOffset;
@@ -30,6 +32,8 @@ fn spawn_player(
 
     let camera =commands.spawn((
         Camera3d::default(),
+        DepthPrepass,
+        OcclusionCulling,
         Camera {
             order: 0,
             ..default()

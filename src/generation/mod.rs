@@ -7,7 +7,6 @@ pub mod environment;
 mod moon_material;
 mod voxel_material;
 mod moon_generation;
-
 use bevy::pbr::ExtendedMaterial;
 use bevy::pbr::wireframe::Wireframe;
 use bevy::platform::collections::{HashMap, HashSet};
@@ -48,7 +47,13 @@ impl Plugin for ChunkPlugin {
     }
 }
 
-pub type SectionMeshes = Vec<(usize, Mesh)>;
+pub struct BuiltSectionMesh{
+    pub section_index: usize,
+    pub mesh: Mesh,
+    pub triangle_count: usize,
+    pub vertex_count: usize,
+}
+pub type SectionMeshes = Vec<BuiltSectionMesh>;
 #[derive(Component)]
 pub struct ComputeChunkTask(Task<(IVec2, SectionMeshes)>);
 #[derive(Component)]
@@ -62,6 +67,11 @@ pub struct LoadedChunks {
 pub struct ChunkSection {
     pub column: IVec2,
     pub section_index: usize,
+}
+#[derive(Component, Clone, Copy)]
+pub struct ChunkMeshStats {
+    pub triangles: usize,
+    pub vertices: usize,
 }
 
 fn spawn_chunk_task(
@@ -94,11 +104,11 @@ fn spawn_chunk_task(
                 Some(&north_edge),
             );
 
-            let mut section_meshes = Vec::with_capacity(MESH_SECTION_COUNT);
+            let mut section_meshes: SectionMeshes = Vec::with_capacity(MESH_SECTION_COUNT);
 
             for section_index in 0..MESH_SECTION_COUNT {
-                if let Some(mesh) = build_mesh_section_from_scratch(scratch, section_index) {
-                    section_meshes.push((section_index, mesh));
+                if let Some(section) = build_mesh_section_from_scratch(scratch, section_index) {
+                    section_meshes.push((section));
                 }
             }
             (coord, section_meshes)
@@ -121,10 +131,14 @@ fn load_chunks_around_player(
 
         let thread_pool = AsyncComputeTaskPool::get();
 
-
-        for cx in (player_chunk_x - RENDER_DISTANCE)..(player_chunk_x + RENDER_DISTANCE) {
-            for cz in (player_chunk_z - RENDER_DISTANCE)..(player_chunk_z + RENDER_DISTANCE) {
-                let coord = IVec2::new(cx, cz);
+        for cx in -RENDER_DISTANCE..=RENDER_DISTANCE {
+            for cz in -RENDER_DISTANCE..=RENDER_DISTANCE {
+                if cx * cx + cz * cz
+                    > RENDER_DISTANCE * RENDER_DISTANCE
+                {
+                    continue;
+                }
+                let coord = IVec2::new(player_chunk_x + cx, player_chunk_z + cz);
 
                 if !loaded_chunks.entities.contains_key(&coord) && !loaded_chunks.pending.contains(&coord) {
                     loaded_chunks.pending.insert(coord);
@@ -134,7 +148,6 @@ fn load_chunks_around_player(
         }
     }
 }
-
 fn unload_distant_chunks(
     player_query: Query<&Transform, With<Player>>,
     mut loaded_chunks: ResMut<LoadedChunks>,
@@ -146,10 +159,12 @@ fn unload_distant_chunks(
 
         let chunks_to_unload: Vec<IVec2> = loaded_chunks.entities.iter()
             .filter(|(coord, _)| {
-            let dx = coord.x - player_chunk_x;
-            let dz = coord.y - player_chunk_z;
-            dx.abs() > UNLOAD_DISTANCE || dz.abs() > UNLOAD_DISTANCE
-        })
+                let dx = coord.x - player_chunk_x;
+                let dz = coord.y - player_chunk_z;
+                let distance_sq = dx * dx + dz * dz;
+                let unload_sq = UNLOAD_DISTANCE * UNLOAD_DISTANCE;
+                distance_sq > unload_sq
+            })
             .map(|(coord, _)| *coord).collect();
 
         for coord in chunks_to_unload {
@@ -177,9 +192,9 @@ fn handle_chunk_tasks(
 
         let mut section_entities = Vec::with_capacity(section_meshes.len());
 
-        for (section_index, mesh) in section_meshes {
+        for section in section_meshes {
             let mesh_entity = commands.spawn((
-                Mesh3d(meshes.add(mesh)),
+                Mesh3d(meshes.add(section.mesh)),
                 MeshMaterial3d(chunk_material.0.clone()),
                 Transform::from_xyz(
                     coord.x as f32 * CHUNK_X as f32,
@@ -189,8 +204,13 @@ fn handle_chunk_tasks(
 
                 ChunkSection {
                     column: coord,
-                    section_index,
+                    section_index: section.section_index,
                 },
+
+                ChunkMeshStats {
+                    triangles: section.triangle_count,
+                    vertices: section.vertex_count,
+                }
                 //Wireframe
                 )).id();
             section_entities.push(mesh_entity);
