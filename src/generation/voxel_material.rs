@@ -23,7 +23,7 @@ use bevy::prelude::{default, Commands, Component, Name, Reflect, ResMut, TypePat
 use bevy::render::render_resource::{AsBindGroup, ShaderType, SpecializedMeshPipelineError, VertexAttribute};
 use bevy_inspector_egui::bevy_egui::{EguiGlobalSettings, PrimaryEguiContext};
 use crate::generation::ChunkMaterialHandle;
-use crate::generation::mesh::ATTRIBUTE_AO;
+use crate::generation::mesh::ATTRIBUTE_VOXEL_DATA;
 
 const SHADER_PATH: &str = "shaders/voxel_material.wgsl";
 #[derive(Clone, Copy, Debug, PartialEq, ShaderType, Component, Reflect)]
@@ -64,7 +64,7 @@ impl MaterialExtension for VoxelMaterialExtension {
             .0
             .attribute_ids()
             .iter()
-            .position(|id| *id == ATTRIBUTE_AO.id)
+            .position(|id| *id == ATTRIBUTE_VOXEL_DATA.id)
         else {
             return Ok(());
         };

@@ -10,11 +10,10 @@ const RIGHT_NORMAL: [f32; 3] = [1.0, 0.0, 0.0];
 const LEFT_NORMAL: [f32; 3] = [-1.0, 0.0, 0.0];
 const TOP_NORMAL: [f32; 3] = [0.0, 1.0, 0.0];
 const BOTTOM_NORMAL: [f32; 3] = [0.0, -1.0, 0.0];
-const BACK_NORMAL: [f32; 3] = [0.0,  0.0, 1.0];
-const FRONT_NORMAL: [f32; 3] = [0.0,  0.0, -1.0];
+const BACK_NORMAL: [f32; 3] = [0.0, 0.0, 1.0];
+const FRONT_NORMAL: [f32; 3] = [0.0, 0.0, -1.0];
 const EXPECTED_VERTICES: usize = 8_192;
 const EXPECTED_INDICES: usize = 16_384;
-const EXPECTED_AO: usize = 8_192;
 
 pub type Ao = u8;
 pub struct ChunkMeshScratch {
@@ -23,8 +22,7 @@ pub struct ChunkMeshScratch {
 
     pub positions: Vec<[f32; 3]>,
     pub normals: Vec<[f32; 3]>,
-    pub colors: Vec<[f32; 4]>,
-    pub ao: Vec<Ao>,
+    pub vertex_data: Vec<u32>,
     pub indices: Vec<u32>,
 
     pub mask_y: [u32; MESH_SECTION_Y],
@@ -41,6 +39,24 @@ pub const ATTRIBUTE_AO: MeshVertexAttribute =
         VertexFormat::Float32,
     );
 
+pub const ATTRIBUTE_VOXEL_DATA: MeshVertexAttribute =
+    MeshVertexAttribute::new(
+        "Voxel_Data",
+        999_999_999,
+        VertexFormat::Uint32,
+    );
+
+#[inline]
+pub(crate) fn pack_vertex_data(
+    voxel: VoxelType,
+    ao: u8,
+) -> u32 {
+    debug_assert!(ao <= 3);
+
+    (voxel as u32)
+        | (((ao & 0b11) as u32) << 8)
+}
+
 impl ChunkMeshScratch {
     pub fn new() -> Self {
         Self {
@@ -48,8 +64,7 @@ impl ChunkMeshScratch {
             padded: vec![VoxelType::Air; PADDED_X * PADDED_Y * PADDED_Z],
             positions: Vec::with_capacity(EXPECTED_VERTICES),
             normals: Vec::with_capacity(EXPECTED_VERTICES),
-            colors: Vec::with_capacity(EXPECTED_VERTICES),
-            ao: Vec::with_capacity(EXPECTED_AO),
+            vertex_data: Vec::with_capacity(EXPECTED_VERTICES),
             face_keys_y: [[0u16; CHUNK_Z]; MESH_SECTION_Y],
             face_keys_z: [[0u16; CHUNK_X]; CHUNK_Z],
             face_keys_x: [[0u16; CHUNK_X]; MESH_SECTION_Y],
@@ -64,8 +79,7 @@ impl ChunkMeshScratch {
 
         self.positions.reserve(EXPECTED_VERTICES);
         self.normals.reserve(EXPECTED_VERTICES);
-        self.colors.reserve(EXPECTED_VERTICES);
-        self.ao.reserve(EXPECTED_AO);
+        self.vertex_data.reserve(EXPECTED_VERTICES);
         self.indices.reserve(EXPECTED_INDICES);
 
         self.mask_y.fill(0);
@@ -92,8 +106,7 @@ pub fn build_mesh_section_from_scratch(
 
     scratch.positions.clear();
     scratch.normals.clear();
-    scratch.colors.clear();
-    scratch.ao.clear();
+    scratch.vertex_data.clear();
     scratch.indices.clear();
 
     scratch.mask_y.fill(0);
@@ -111,8 +124,7 @@ pub fn build_mesh_section_from_scratch(
         &mut scratch.face_keys_y,
         &mut scratch.positions,
         &mut scratch.normals,
-        &mut scratch.colors,
-        &mut scratch.ao,
+        &mut scratch.vertex_data,
         &mut scratch.indices,
         &mut vertex_offset,
     );
@@ -123,8 +135,7 @@ pub fn build_mesh_section_from_scratch(
         &mut scratch.face_keys_y,
         &mut scratch.positions,
         &mut scratch.normals,
-        &mut scratch.colors,
-        &mut scratch.ao,
+        &mut scratch.vertex_data,
         &mut scratch.indices,
         &mut vertex_offset,
     );
@@ -135,8 +146,7 @@ pub fn build_mesh_section_from_scratch(
         &mut scratch.face_keys_z,
         &mut scratch.positions,
         &mut scratch.normals,
-        &mut scratch.colors,
-        &mut scratch.ao,
+        &mut scratch.vertex_data,
         &mut scratch.indices,
         &mut vertex_offset,
     );
@@ -147,8 +157,7 @@ pub fn build_mesh_section_from_scratch(
         &mut scratch.face_keys_z,
         &mut scratch.positions,
         &mut scratch.normals,
-        &mut scratch.colors,
-        &mut scratch.ao,
+        &mut scratch.vertex_data,
         &mut scratch.indices,
         &mut vertex_offset,
     );
@@ -159,8 +168,7 @@ pub fn build_mesh_section_from_scratch(
         &mut scratch.face_keys_y,
         &mut scratch.positions,
         &mut scratch.normals,
-        &mut scratch.colors,
-        &mut scratch.ao,
+        &mut scratch.vertex_data,
         &mut scratch.indices,
         &mut vertex_offset,
     );
@@ -171,8 +179,7 @@ pub fn build_mesh_section_from_scratch(
         &mut scratch.face_keys_y,
         &mut scratch.positions,
         &mut scratch.normals,
-        &mut scratch.colors,
-        &mut scratch.ao,
+        &mut scratch.vertex_data,
         &mut scratch.indices,
         &mut vertex_offset,
     );
@@ -196,20 +203,17 @@ pub fn build_mesh_section_from_scratch(
         Mesh::ATTRIBUTE_NORMAL,
         std::mem::take(&mut scratch.normals),
     );
-    mesh.insert_attribute (
-        Mesh::ATTRIBUTE_COLOR,
-        std::mem::take(&mut scratch.colors),
-    );
-
-    let ao_normalized: Vec<f32> = std::mem::take(&mut scratch.ao)
-        .into_iter().map(|occlusion| { 1.0 - occlusion as f32 / 3.0}).collect();
-
     mesh.insert_attribute(
-        ATTRIBUTE_AO,
-        ao_normalized,
+        ATTRIBUTE_VOXEL_DATA,
+        std::mem::take(&mut scratch.vertex_data),
     );
 
     mesh.insert_indices(Indices::U32(std::mem::take(&mut scratch.indices),));
+
+    // println!("The useful size of `section_index` is {}", size_of_val(&section_index));
+    // println!("The useful size of `mesh` is {}", size_of_val(&mesh));
+    // println!("The useful size of `triangle_count` is {}", size_of_val(&triangle_count));
+    // println!("The useful size of `vertex_count` is {}", size_of_val(&vertex_count));
 
     Some(BuiltSectionMesh {
         section_index,
@@ -235,8 +239,7 @@ pub fn mesh_right_faces_binary(
     face_keys: &mut [[u16; CHUNK_Z]; MESH_SECTION_Y],
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
-    colors: &mut Vec<[f32; 4]>,
-    ao: &mut Vec<Ao>,
+    vertex_data: &mut Vec<u32>,
     indices: &mut Vec<u32>,
     vertex_offset: &mut u32,
 ) {
@@ -345,14 +348,17 @@ pub fn mesh_right_faces_binary(
                     _ => unreachable!(),
                 };
 
-                colors.extend_from_slice(&[voxel.face_color(); 4]);
-
                 let ao0 = unpack_ao_corner(corner_keys[1], 0);
                 let ao1 = unpack_ao_corner(corner_keys[0], 1);
                 let ao2 = unpack_ao_corner(corner_keys[3], 2);
                 let ao3 = unpack_ao_corner(corner_keys[2], 3);
 
-                ao.extend_from_slice(&[ao0, ao1, ao2, ao3]);
+                vertex_data.extend_from_slice(&[
+                    pack_vertex_data(voxel, ao0),
+                    pack_vertex_data(voxel, ao1),
+                    pack_vertex_data(voxel, ao2),
+                    pack_vertex_data(voxel, ao3),
+                ]);
                 let tl = ao0 as i32;
                 let tr = ao1 as i32;
                 let br = ao2 as i32;
@@ -393,8 +399,7 @@ pub fn mesh_left_faces_binary(
     face_keys: &mut [[u16; CHUNK_Z]; MESH_SECTION_Y],
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
-    colors: &mut Vec<[f32; 4]>,
-    ao: &mut Vec<Ao>,
+    vertex_data: &mut Vec<u32>,
     indices: &mut Vec<u32>,
     vertex_offset: &mut u32,
 ) {
@@ -503,14 +508,17 @@ pub fn mesh_left_faces_binary(
                     _ => unreachable!(),
                 };
 
-                colors.extend_from_slice(&[voxel.face_color(); 4]);
-
                 let ao0 = unpack_ao_corner(corner_keys[0], 0);
                 let ao1 = unpack_ao_corner(corner_keys[1], 1);
                 let ao2 = unpack_ao_corner(corner_keys[2], 2);
                 let ao3 = unpack_ao_corner(corner_keys[3], 3);
 
-                ao.extend_from_slice(&[ao0, ao1, ao2, ao3]);
+                vertex_data.extend_from_slice(&[
+                    pack_vertex_data(voxel, ao0),
+                    pack_vertex_data(voxel, ao1),
+                    pack_vertex_data(voxel, ao2),
+                    pack_vertex_data(voxel, ao3),
+                ]);
                 let tl = ao0 as i32;
                 let tr = ao1 as i32;
                 let br = ao2 as i32;
@@ -551,8 +559,7 @@ pub fn mesh_top_faces_binary(
     face_keys: &mut [[u16; CHUNK_X]; CHUNK_Z],
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
-    colors: &mut Vec<[f32; 4]>,
-    ao: &mut Vec<Ao>,
+    vertex_data: &mut Vec<u32>,
     indices: &mut Vec<u32>,
     vertex_offset: &mut u32,
 ) {
@@ -661,14 +668,17 @@ pub fn mesh_top_faces_binary(
                     _ => unreachable!(),
                 };
 
-                colors.extend_from_slice(&[voxel.face_color(); 4]);
-
                 let ao0 = unpack_ao_corner(corner_keys[3], 0);
                 let ao1 = unpack_ao_corner(corner_keys[2], 1);
                 let ao2 = unpack_ao_corner(corner_keys[1], 2);
                 let ao3 = unpack_ao_corner(corner_keys[0], 3);
 
-                ao.extend_from_slice(&[ao0, ao1, ao2, ao3]);
+                vertex_data.extend_from_slice(&[
+                    pack_vertex_data(voxel, ao0),
+                    pack_vertex_data(voxel, ao1),
+                    pack_vertex_data(voxel, ao2),
+                    pack_vertex_data(voxel, ao3),
+                ]);
                 let tl = ao0 as i32;
                 let tr = ao1 as i32;
                 let br = ao2 as i32;
@@ -709,8 +719,7 @@ pub fn mesh_bottom_faces_binary(
     face_keys: &mut [[u16; CHUNK_X]; CHUNK_Z],
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
-    colors: &mut Vec<[f32; 4]>,
-    ao: &mut Vec<Ao>,
+    vertex_data: &mut Vec<u32>,
     indices: &mut Vec<u32>,
     vertex_offset: &mut u32,
 ) {
@@ -819,14 +828,17 @@ pub fn mesh_bottom_faces_binary(
                     _ => unreachable!(),
                 };
 
-                colors.extend_from_slice(&[voxel.face_color(); 4]);
-
                 let ao0 = unpack_ao_corner(corner_keys[0], 0);
                 let ao1 = unpack_ao_corner(corner_keys[1], 1);
                 let ao2 = unpack_ao_corner(corner_keys[2], 2);
                 let ao3 = unpack_ao_corner(corner_keys[3], 3);
 
-                ao.extend_from_slice(&[ao0, ao1, ao2, ao3]);
+                vertex_data.extend_from_slice(&[
+                    pack_vertex_data(voxel, ao0),
+                    pack_vertex_data(voxel, ao1),
+                    pack_vertex_data(voxel, ao2),
+                    pack_vertex_data(voxel, ao3),
+                ]);
                 let tl = ao0 as i32;
                 let tr = ao1 as i32;
                 let br = ao2 as i32;
@@ -868,8 +880,7 @@ pub fn mesh_front_faces_binary(
     face_keys: &mut [[u16; CHUNK_X]; MESH_SECTION_Y],
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
-    colors: &mut Vec<[f32; 4]>,
-    ao: &mut Vec<Ao>,
+    vertex_data: &mut Vec<u32>,
     indices: &mut Vec<u32>,
     vertex_offset: &mut u32,
 ) {
@@ -978,14 +989,17 @@ pub fn mesh_front_faces_binary(
                     _ => unreachable!(),
                 };
 
-                colors.extend_from_slice(&[voxel.face_color(); 4]);
-
                 let ao0 = unpack_ao_corner(corner_keys[1], 0);
                 let ao1 = unpack_ao_corner(corner_keys[0], 1);
                 let ao2 = unpack_ao_corner(corner_keys[3], 2);
                 let ao3 = unpack_ao_corner(corner_keys[2], 3);
 
-                ao.extend_from_slice(&[ao0, ao1, ao2, ao3]);
+                vertex_data.extend_from_slice(&[
+                    pack_vertex_data(voxel, ao0),
+                    pack_vertex_data(voxel, ao1),
+                    pack_vertex_data(voxel, ao2),
+                    pack_vertex_data(voxel, ao3),
+                ]);
                 let tl = ao0 as i32;
                 let tr = ao1 as i32;
                 let br = ao2 as i32;
@@ -1027,8 +1041,7 @@ pub fn mesh_back_faces_binary(
     face_keys: &mut [[u16; CHUNK_X]; MESH_SECTION_Y],
     positions: &mut Vec<[f32; 3]>,
     normals: &mut Vec<[f32; 3]>,
-    colors: &mut Vec<[f32; 4]>,
-    ao: &mut Vec<Ao>,
+    vertex_data: &mut Vec<u32>,
     indices: &mut Vec<u32>,
     vertex_offset: &mut u32,
 ) {
@@ -1137,14 +1150,17 @@ pub fn mesh_back_faces_binary(
                     _ => unreachable!(),
                 };
 
-                colors.extend_from_slice(&[voxel.face_color(); 4]);
-
                 let ao0 = unpack_ao_corner(corner_keys[0], 3);
                 let ao1 = unpack_ao_corner(corner_keys[1], 2);
                 let ao2 = unpack_ao_corner(corner_keys[2], 1);
                 let ao3 = unpack_ao_corner(corner_keys[3], 0);
 
-                ao.extend_from_slice(&[ao0, ao1, ao2, ao3]);
+                vertex_data.extend_from_slice(&[
+                    pack_vertex_data(voxel, ao0),
+                    pack_vertex_data(voxel, ao1),
+                    pack_vertex_data(voxel, ao2),
+                    pack_vertex_data(voxel, ao3),
+                ]);
                 let tl = ao0 as i32;
                 let tr = ao1 as i32;
                 let br = ao2 as i32;

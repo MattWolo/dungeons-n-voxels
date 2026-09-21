@@ -1,3 +1,6 @@
+#define VERTEX_COLORS
+#define VERTEX_OUTPUT_INSTANCE_INDEX
+
 #import bevy_pbr::{
     mesh_view_bindings::view,
     utils::coords_to_viewport_uv,
@@ -20,6 +23,47 @@
     mesh_position_local_to_world,
     mesh_position_local_to_clip,
     mesh_normal_local_to_world,
+}
+
+const VOXEL_GRASS: u32 = 1u;
+const VOXEL_SNOW: u32 = 2u;
+const VOXEL_SAND: u32 = 3u;
+
+fn voxel_color(voxel_id: u32) -> vec4<f32> {
+    switch voxel_id {
+        case VOXEL_GRASS: {
+            return vec4<f32>(
+                0.2,
+                1.0,
+                0.2,
+                1.0,
+            );
+        }
+        case VOXEL_SNOW: {
+            return vec4<f32>(
+                0.8,
+                0.8,
+                0.8,
+                1.0,
+            );
+        }
+        case VOXEL_SAND: {
+            return vec4<f32>(
+                1.0,
+                1.0,
+                0.5,
+                1.0,
+            );
+        }
+        default: {
+            return vec4<f32>(
+                1.0,
+                0.0,
+                1.0,
+                1.0,
+            );
+        }
+    }
 }
 
 fn hash12(p: vec2<f32>) -> f32 {
@@ -136,8 +180,7 @@ struct VertexInput {
 
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
-    @location(5) color: vec4<f32>,
-    @location(8) ao: f32,
+    @location(8) voxel_data: u32,
 };
 
 struct FogSettings {
@@ -158,6 +201,12 @@ var sky_gradient_sampler: sampler;
 fn vertex(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
 
+    let voxel_id = in.voxel_data & 0xffu;
+    let ao_occlusion = (in.voxel_data >> 8u) & 0x3u;
+    let ao = 1.0 - f32(ao_occlusion) / 3.0;
+    let base_color = voxel_color(voxel_id);
+    let base_rgb = base_color.rgb;
+
     let world_from_local = get_world_from_local(in.instance_index);
 
     out.world_position = mesh_position_local_to_world(
@@ -175,8 +224,6 @@ fn vertex(in: VertexInput) -> VertexOutput {
         in.instance_index,
     );
 
-    let base_rgb = in.color.rgb;
-
     //Measure color brightness and saturation to detect white blocks
     let max_c = max(base_rgb.r, max(base_rgb.g, base_rgb.b));
     let min_c = min(base_rgb.r, min(base_rgb.g, base_rgb.b));
@@ -193,11 +240,11 @@ fn vertex(in: VertexInput) -> VertexOutput {
     let shadow_color = mix(default_shadow, snow_blue_shadow, whiteness);
 
     //AO value (e.g., pow exponent alters shadow sharpness/falloff)
-    let ao_curved = pow(clamp(in.ao, 0.0, 1.0), 1.2);
+    let ao_curved = pow(clamp(ao, 0.0, 1.0), 1.2);
 
     out.color = vec4<f32>(
         mix(shadow_color, base_rgb, ao_curved),
-        in.color.a,
+        base_color.a,
     );
 
     out.instance_index = in.instance_index;
