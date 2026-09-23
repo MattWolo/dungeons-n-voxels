@@ -32,7 +32,7 @@ use voxel_type::{
     MESH_SECTION_COUNT,
     WORLD_MIN_Y,
 };
-use crate::generation::LOD::{lod_for_distance_sq, LodLevel};
+use crate::generation::LOD::{lod_for_distance_sq, LodLevel, FULL_DETAIL_DISTANCE};
 use crate::generation::voxel_material::{VoxelMaterialExtension, VoxelMaterialSettings};
 use crate::generation::voxel_type::{VoxelType, CHUNK_Y};
 use crate::generation::worldgen::sample_terrain;
@@ -48,18 +48,24 @@ const FAR_PADDED_SIZE: usize = FAR_LOD_SIZE + 2;
 const FAR_GRID_X: usize = FAR_CELLS_X + 2;
 const FAR_GRID_Z: usize = FAR_CELLS_Z + 2;
 pub const WORLD_SEED: u32 = 5345235;
+const MAX_PENDING_COLUMNS: usize = 64;
+const MAX_NEW_COLUMNS_PER_FRAME: usize = 8;
+const MAX_FINISHED_COLUMNS_PER_FRAME: usize = 8;
+const MANDATORY_DISTANCE: i32 = FULL_DETAIL_DISTANCE;
 pub struct ChunkPlugin;
 impl Plugin for ChunkPlugin {
     fn build(&self, app: &mut App) {
         app
             .insert_resource(LoadedChunks::default())
+            .insert_resource(ChunkStreamState::default())
+            .insert_resource(ChunkLoadOffsets::new())
             .add_plugins(MaterialPlugin::<ChunkMaterialHandle>::default())
             .add_systems(Startup, (setup_chunk_material, /*spawn_initial_chunks*/))
             .add_systems(Update, (
-                load_chunks_around_player,
-                unload_distant_chunks,
                 handle_chunk_tasks,
-                ).chain());
+                unload_distant_chunks,
+                load_chunks_around_player,
+            ).chain());
     }
 }
 
@@ -102,6 +108,32 @@ pub struct ChunkMeshStats {
 struct LodCell {
     height: i32,
     voxel: VoxelType,
+}
+#[derive(Resource, Default)]
+pub struct ChunkStreamState {
+    pub center: Option<IVec2>,
+    pub cursor: usize,
+}
+#[derive(Resource)]
+pub struct ChunkLoadOffsets {
+    pub offsets: Vec<(i32, IVec2)>,
+}
+impl ChunkLoadOffsets {
+    pub fn new() -> Self {
+        let mut offsets = Vec::new();
+
+        for dx in -RENDER_DISTANCE..=RENDER_DISTANCE {
+            for dz in -RENDER_DISTANCE..=RENDER_DISTANCE {
+                let distance_sq = dx*dx + dz*dz;
+                if distance_sq > RENDER_DISTANCE * RENDER_DISTANCE {
+                    continue;
+                }
+                offsets.push((distance_sq, IVec2::new(dx, dz),));
+            }
+        }
+        offsets.sort_unstable_by_key(|(distance_sq, _)| *distance_sq);
+        Self { offsets }
+    }
 }
 
 fn build_full_column(coord: IVec2, seed: u32, ) -> Vec<BuiltSectionMesh> {
@@ -220,18 +252,18 @@ fn build_far_column(coord: IVec2, seed: u32) -> Vec<BuiltSectionMesh> {
             let top_y = (current.height - WORLD_MIN_Y) as f32 - 0.5;
 
             emit_lod_quad(
-              &mut positions,
-              &mut normals,
-              &mut vertex_data,
-              &mut indices,
-              [
-                  [min_x, top_y, max_z],
-                  [max_x, top_y, max_z],
-                  [max_x, top_y, min_z],
-                  [min_x, top_y, min_z],
-              ],
-              [0.0, 1.0, 0.0],
-              current.voxel,
+                &mut positions,
+                &mut normals,
+                &mut vertex_data,
+                &mut indices,
+                [
+                    [min_x, top_y, max_z],
+                    [max_x, top_y, max_z],
+                    [max_x, top_y, min_z],
+                    [min_x, top_y, min_z],
+                ],
+                [0.0, 1.0, 0.0],
+                current.voxel,
             );
 
             if current.height > right.height {
@@ -354,12 +386,6 @@ fn quantize_lod_height(height: i32, step: i32) -> i32 {
     let quantized = (local / step) * step;
     WORLD_MIN_Y + quantized
 }
-
-#[inline]
-fn lod_cell_index(x: usize, z: usize) -> usize {
-    z * FAR_GRID_X + x
-}
-
 fn sample_lod_cell(coord: IVec2, cell_x: i32, cell_z: i32, seed: u32) -> LodCell {
     let chunk_world_x = coord.x * CHUNK_X as i32;
     let chunk_world_z = coord.y * CHUNK_Z as i32;
@@ -371,34 +397,6 @@ fn sample_lod_cell(coord: IVec2, cell_x: i32, cell_z: i32, seed: u32) -> LodCell
         height: quantize_lod_height(sampled.height, FAR_LOD_STEP),
         voxel: sampled.surface,
     }
-}
-
-fn build_lod_cells(coord: IVec2, seed: u32) -> Vec<LodCell> {
-    let mut cells = vec![LodCell {
-        height: WORLD_MIN_Y,
-        voxel: VoxelType::Air,
-    };
-        FAR_GRID_X * FAR_GRID_Z
-    ];
-    let chunk_world_x = coord.x * CHUNK_X as i32;
-    let chunk_world_z = coord.y * CHUNK_Z as i32;
-    let step = FAR_LOD_STEP as i32;
-    for grid_z in 0..FAR_GRID_Z {
-        let cell_z = grid_z as i32 - 1;
-        for grid_x in 0..FAR_GRID_X {
-            let cell_x = grid_x as i32 - 1;
-
-            let world_x = chunk_world_x + cell_x * step + step / 2;
-            let world_z = chunk_world_z + cell_z * step + step / 2;
-            let sampled = sample_terrain(world_x as f32, world_z as f32, seed);
-            let height = quantize_lod_height(sampled.height, step);
-            cells[lod_cell_index(grid_x, grid_z)] = LodCell {
-                height,
-                voxel: sampled.surface,
-            };
-        }
-    }
-    cells
 }
 
 fn spawn_chunk_task(
@@ -433,45 +431,107 @@ fn spawn_chunk_task(
 fn load_chunks_around_player(
     player_query: Query<&Transform, With<Player>>,
     mut loaded_chunks: ResMut<LoadedChunks>,
+    load_offsets: Res<ChunkLoadOffsets>,
+    mut stream_state: ResMut<ChunkStreamState>,
     mut commands: Commands,
 ) {
-    if let Ok(player_transform) = player_query.single() {
-        let player_chunk_x = (player_transform.translation.x / CHUNK_X as f32).floor() as i32;
-        let player_chunk_z = (player_transform.translation.z / CHUNK_Z as f32).floor() as i32;
+    let _span = info_span!("load_chunks_around_player").entered();
+    let Ok(player_transform) = player_query.single() else {
+        return;
+    };
 
-        let thread_pool = AsyncComputeTaskPool::get();
+    let player_chunk_x = (player_transform.translation.x / CHUNK_X as f32).floor() as i32;
+    let player_chunk_z = (player_transform.translation.z / CHUNK_Z as f32).floor() as i32;
 
-        for cx in -RENDER_DISTANCE..=RENDER_DISTANCE {
-            for cz in -RENDER_DISTANCE..=RENDER_DISTANCE {
-                let distance_sq = cx * cx + cz * cz;
+    let player_chunk = IVec2::new(
+        player_chunk_x,
+        player_chunk_z,
+    );
 
-                if distance_sq > RENDER_DISTANCE * RENDER_DISTANCE {
-                    continue;
-                }
+    if stream_state.center != Some(player_chunk) {
+        stream_state.center = Some(player_chunk);
+        stream_state.cursor = 0;
+    }
 
-                let coord = IVec2::new(
-                    player_chunk_x + cx,
-                    player_chunk_z +cz,
-                );
-                let desired_lod = lod_for_distance_sq(distance_sq);
-                let needs_build = match loaded_chunks.columns.get(&coord){
-                    None => true,
-                    Some(column) => { column.lod != desired_lod }
-                };
-                if needs_build && !loaded_chunks.pending.contains(&coord){
-                    loaded_chunks.pending.insert(coord);
+    if stream_state.cursor >= load_offsets.offsets.len()
+    {
+        return;
+    }
 
-                    spawn_chunk_task(
-                        &mut commands,
-                        coord,
-                        desired_lod,
-                        thread_pool,
-                        WORLD_SEED,
-                    );
-                }
+    let available_slots = MAX_PENDING_COLUMNS.saturating_sub(loaded_chunks.pending.len());
+    if available_slots == 0 {
+        return;
+    }
+    let amount_to_spawn = MAX_NEW_COLUMNS_PER_FRAME.min(available_slots);
+
+    let near_ready = mandatory_near_area_loaded(&loaded_chunks, player_chunk);
+
+    let thread_pool = AsyncComputeTaskPool::get();
+
+    let mut spawned = 0usize;
+
+    while spawned < amount_to_spawn && stream_state.cursor < load_offsets.offsets.len() {
+        let (distance_sq, offset) = load_offsets.offsets[stream_state.cursor];
+        let coord = player_chunk + offset;
+        let desired_lod = lod_for_distance_sq(distance_sq);
+        if !near_ready && desired_lod == LodLevel::Far {
+            break;
+        }
+        stream_state.cursor += 1;
+
+        let needs_build = match loaded_chunks.columns.get(&coord) {
+            None => true,
+            Some(column) => {
+                column.lod != desired_lod
+            }
+        };
+        if !needs_build {
+            continue;
+        }
+        if loaded_chunks.pending.contains(&coord) {
+            continue;
+        }
+        loaded_chunks.pending.insert(coord);
+
+        spawn_chunk_task(
+            &mut commands,
+            coord,
+            desired_lod,
+            thread_pool,
+            WORLD_SEED,
+        );
+        spawned += 1;
+    }
+}
+
+fn mandatory_near_area_loaded(
+    loaded_chunks: &LoadedChunks,
+    player_chunk: IVec2,
+) -> bool {
+    const R: i32 = MANDATORY_DISTANCE;
+
+    for dx in -R..=R {
+        for dz in -R..=R {
+            if dx * dx + dz * dz > R * R {
+                continue;
+            }
+
+            let coord = player_chunk
+                + IVec2::new(dx, dz);
+
+            let Some(column) =
+                loaded_chunks.columns.get(&coord)
+            else {
+                return false;
+            };
+
+            if column.lod != LodLevel::Full {
+                return false;
             }
         }
     }
+
+    true
 }
 fn unload_distant_chunks(
     player_query: Query<&Transform, With<Player>>,
@@ -495,7 +555,7 @@ fn unload_distant_chunks(
         for coord in chunks_to_unload {
             if let Some(column) = loaded_chunks.columns.remove(&coord) {
                 for entity in column.entities {
-                    commands.entity(entity).despawn();
+                    commands.entity(entity).try_despawn();
                 }
             }
         }
@@ -508,27 +568,71 @@ fn handle_chunk_tasks(
     mut meshes: ResMut<Assets<Mesh>>,
     chunk_material: Res<ChunkMaterial>,
     mut loaded_chunks: ResMut<LoadedChunks>,
+    player_query: Query<&Transform, With<Player>>,
 ) {
+    let _span = info_span!("handle_chunk_tasks").entered();
+    let Ok(player_transform) = player_query.single() else {
+        return;
+    };
+
+    let player_chunk_x = (player_transform.translation.x / CHUNK_X as f32).floor() as i32;
+    let player_chunk_z = (player_transform.translation.z / CHUNK_Z as f32).floor() as i32;
+
+    let mut handled_this_frame = 0usize;
+
     for (task_entity, mut task) in &mut tasks {
+        if handled_this_frame >= MAX_FINISHED_COLUMNS_PER_FRAME {
+            break;
+        }
+
         let Some(built) = future::block_on(future::poll_once(&mut task.0))
         else {
             continue;
         };
 
-        let mut new_entities = Vec::with_capacity(built.meshes.len());
+        handled_this_frame += 1;
 
-        for section in built.meshes {
+        let BuiltColumn {
+            coord,
+            lod,
+            meshes: built_meshes,
+        } = built;
+
+        let dx = coord.x - player_chunk_x;
+        let dz = coord.y - player_chunk_z;
+        let distance_sq = dx * dx + dz * dz;
+
+        if distance_sq > UNLOAD_DISTANCE * UNLOAD_DISTANCE {
+            loaded_chunks.pending.remove(&coord);
+
+            commands.entity(task_entity).try_despawn();
+
+            continue;
+        }
+
+        let desired_lod = lod_for_distance_sq(distance_sq);
+
+        if lod != desired_lod {
+            loaded_chunks.pending.remove(&coord);
+            commands.entity(task_entity).try_despawn();
+
+            continue;
+        }
+
+        let mut new_entities = Vec::with_capacity(built_meshes.len());
+
+        for section in built_meshes {
             let entity = commands.spawn((
                 Mesh3d(meshes.add(section.mesh)),
                 MeshMaterial3d(chunk_material.0.clone()),
                 Transform::from_xyz(
-                    built.coord.x as f32 * CHUNK_X as f32,
+                    coord.x as f32 * CHUNK_X as f32,
                     WORLD_MIN_Y as f32,
-                    built.coord.y as f32 * CHUNK_Z as f32,
+                    coord.y as f32 * CHUNK_Z as f32,
                 ),
 
                 ChunkSection {
-                    column: built.coord,
+                    column:coord,
                     section_index: section.section_index,
                 },
 
@@ -537,26 +641,25 @@ fn handle_chunk_tasks(
                     vertices: section.vertex_count,
                 }
                 //Wireframe
-                )).id();
+            )).id();
             new_entities.push(entity);
         }
 
-        if let Some(old_column) = loaded_chunks.columns.remove(&built.coord){
+        if let Some(old_column) = loaded_chunks.columns.remove(&coord) {
             for entity in old_column.entities {
-                commands.entity(entity).despawn();
+                commands.entity(entity).try_despawn();
             }
         }
 
         loaded_chunks.columns.insert(
-            built.coord,
-            LoadedColumn {
+            coord,
+            LoadedColumn{
                 entities: new_entities,
-                lod: built.lod,
+                lod,
             },
         );
-
-        loaded_chunks.pending.remove(&built.coord);
-        commands.entity(task_entity).despawn();
+        loaded_chunks.pending.remove(&coord);
+        commands.entity(task_entity).try_despawn();
     }
 }
 pub type ChunkMaterialHandle = ExtendedMaterial<StandardMaterial, VoxelMaterialExtension>;
