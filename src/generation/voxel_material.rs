@@ -20,8 +20,9 @@ use bevy::image::Image;
 use bevy::math::{vec3, Vec3};
 use bevy::pbr::{Material, MeshMaterial3d, MeshPipelineKey};
 use bevy::prelude::{default, Commands, Component, Name, Reflect, ResMut, TypePath, Query};
-use bevy::render::render_resource::{AsBindGroup, ShaderType, SpecializedMeshPipelineError, VertexAttribute};
+use bevy::render::render_resource::{AsBindGroup, ShaderType, SpecializedMeshPipelineError};
 use bevy_inspector_egui::bevy_egui::{EguiGlobalSettings, PrimaryEguiContext};
+use tracing::info_span;
 use crate::generation::ChunkMaterialHandle;
 use crate::generation::mesh::ATTRIBUTE_VOXEL_DATA;
 
@@ -60,23 +61,12 @@ impl MaterialExtension for VoxelMaterialExtension {
         layout: &MeshVertexBufferLayoutRef,
         _key: MaterialExtensionKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
-        let Some(index) = layout
-            .0
-            .attribute_ids()
-            .iter()
-            .position(|id| *id == ATTRIBUTE_VOXEL_DATA.id)
-        else {
-            return Ok(());
-        };
-
-        let layout_attribute = &layout.0.layout().attributes[index];
-
-        descriptor.vertex.buffers[0].attributes.push(VertexAttribute {
-            format: layout_attribute.format,
-            offset: layout_attribute.offset,
-            shader_location: 8,
-        });
-
+        let vertex_layout = layout.0.get_layout(&[
+            Mesh::ATTRIBUTE_POSITION.at_shader_location(0),
+            Mesh::ATTRIBUTE_NORMAL.at_shader_location(1),
+            ATTRIBUTE_VOXEL_DATA.at_shader_location(8),
+        ])?;
+        descriptor.vertex.buffers = vec![vertex_layout.clone()];
         Ok(())
     }
 }
@@ -102,6 +92,7 @@ pub fn force_material_update(
     mut materials: ResMut<Assets<ChunkMaterialHandle>>,
     query: Query<&MeshMaterial3d<ChunkMaterialHandle>>,
 ) {
+    let _span = info_span!("force_material_update").entered();
     // If the sky state changed or the image was resized this frame:
     for handle in query.iter() {
         if let Some(mut _material) = materials.get_mut(handle) {

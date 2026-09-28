@@ -1,7 +1,9 @@
+use tracing::info_span;
 use crate::generation::biome_recipes::{SampledTerrain, BIOME_RECIPES, BiomeRecipe};
 use crate::generation::voxel_type::{VoxelType, CHUNK_Y};
 
 pub fn sample_terrain(world_x: f32, world_z: f32, seed: u32) -> SampledTerrain {
+    let _span = info_span!("sample_terrain").entered();
     let temp = sample_temperature(world_x, world_z, seed);
     let moisture = sample_moisture(world_x, world_z, seed);
     let erosion = sample_erosion(world_x, world_z, seed);
@@ -172,6 +174,7 @@ pub fn fbm(x: f32, z: f32, octaves: u32, persistence: f32, lacunarity: f32, seed
 }
 
 pub fn sample_biome(world_x: f32, world_z: f32, seed: u32) -> (&'static BiomeRecipe, f32, f32) {
+    let _span = info_span!("sample_biome").entered();
     let temp = sample_temperature(world_x, world_z, seed);
     let moisture = sample_moisture(world_x, world_z, seed);
     let erosion = sample_erosion(world_x, world_z, seed);

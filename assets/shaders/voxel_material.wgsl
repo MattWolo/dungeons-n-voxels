@@ -41,9 +41,9 @@ fn voxel_color(voxel_id: u32) -> vec4<f32> {
         }
         case VOXEL_SNOW: {
             return vec4<f32>(
-                0.8,
-                0.8,
-                0.8,
+                0.72,
+                0.74,
+                0.78,
                 1.0,
             );
         }
@@ -64,6 +64,27 @@ fn voxel_color(voxel_id: u32) -> vec4<f32> {
             );
         }
     }
+}
+
+fn is_grass(voxel_id: u32) -> f32 {
+    if (voxel_id == VOXEL_GRASS) {
+        return 1.0;
+    }
+    return 0.0;
+}
+
+fn is_snow(voxel_id: u32) -> f32 {
+    if (voxel_id == VOXEL_SNOW) {
+        return 1.0;
+    }
+    return 0.0;
+}
+
+fn is_sand(voxel_id: u32) -> f32 {
+    if (voxel_id == VOXEL_SAND) {
+        return 1.0;
+    }
+    return 0.0;
 }
 
 fn hash12(p: vec2<f32>) -> f32 {
@@ -97,6 +118,24 @@ fn fbm2(p: vec2<f32>) -> f32 {
     return (n1 + n2 + n3) / 1.75;
 }
 
+fn terrain_noise(p: vec2<f32>) -> f32 {
+    let warp_x = fbm2(
+        p * 0.018 + vec2<f32>(17.4, 91.7)
+    );
+
+    let warp_y = fbm2(
+        p * 0.018 + vec2<f32>(63.1, 24.8)
+    );
+
+    let warp = (vec2<f32>(warp_x, warp_y) * 2.0 - vec2<f32>(1.0)) * 10.0;
+    let warped_p = p + warp;
+
+    let macro_noise = fbm2(warped_p * 0.03);
+    let detail_noise = fbm2(warped_p * 0.11 + vec2<f32>(31.7, 19.4));
+
+    return clamp(macro_noise * 0.85 + detail_noise * 0.15, 0.0, 1.0);
+}
+
 fn three_color_ramp(
     t: f32,
     dark: vec3<f32>,
@@ -110,40 +149,27 @@ fn three_color_ramp(
 }
 
 fn terrain_patch_tint(
-    base_rgb: vec3<f32>,
+    voxel_id: u32,
     world_pos: vec3<f32>,
     world_normal: vec3<f32>,
 ) -> vec3<f32> {
-    let voxel_xz = floor(world_pos.xz + vec2<f32>(0.5, 0.5));
-
-    //lower values = larger patches
-    let macro_noise = fbm2(voxel_xz * 0.03);
-    let detail_noise = fbm2(voxel_xz * 0.11 + vec2<f32>(31.7, 19.4));
-
-    let patchSpot = clamp(macro_noise * 0.8 + detail_noise * 0.2, 0.0, 1.0);
+    let patchSpot = terrain_noise(world_pos.xz);
 
     //quantize to stylized bands
     //let stepped = floor(patchSpot * 3.0) / 2.0;
     let stepped = smoothstep(0.2, 0.8, patchSpot);
 
-    let max_c = max(base_rgb.r, max(base_rgb.g, base_rgb.b));
-    let min_c = min(base_rgb.r, min(base_rgb.g, base_rgb.b));
-    let saturation = max_c - min_c;
-
-    //snow detector
-    let whiteness = smoothstep(0.7, 1.0, min_c) * (1.0 - smoothstep(0.0, 0.2, saturation));
-
-    //grass detector
-    let green_strength = smoothstep(0.05, 0.25, base_rgb.g - max(base_rgb.r, base_rgb.b));
+    let grass_mask = is_grass(voxel_id);
+    let snow_mask = is_snow(voxel_id);
 
     //color ramps, soften or exaggerate tint
     let grass_dark = vec3<f32>(0.30, 0.96, 0.30);
     let grass_mid = vec3<f32>(1.00, 1.00, 1.00);
-    let grass_bright = vec3<f32>(1.15, 1.30, 0.30);
+    let grass_bright = vec3<f32>(1.00, 1.00, 0.55);
 
-    let snow_dark = vec3<f32>(0.30, 0.30, 1.00);
-    let snow_mid = vec3<f32>(1.00, 1.00, 1.00);
-    let snow_bright = vec3<f32>(1.92, 1.98, 2.07);
+    let snow_dark = vec3<f32>(0.65, 0.65, 0.65);
+    let snow_mid = vec3<f32>(0.82, 0.83, 0.85);
+    let snow_bright = vec3<f32>(0.90, 0.90, 1.00);
 
     let grass_tint =
         three_color_ramp(
@@ -161,11 +187,11 @@ fn terrain_patch_tint(
             snow_bright,
         );
 
-    let material_tint = mix(grass_tint, snow_tint, whiteness);
+    let material_tint = mix(grass_tint, snow_tint, snow_mask);
 
     let topness = smoothstep(0.55, 0.95, normalize(world_normal).y);
 
-    let terrain_mask = max(whiteness, green_strength) * topness;
+    let terrain_mask = max(grass_mask, snow_mask) * topness;
 
     return mix(
         vec3<f32>(1.0, 1.0, 1.0),
@@ -181,7 +207,7 @@ struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(8) voxel_data: u32,
-};
+}
 
 struct FogSettings {
     distance_start: f32,
@@ -204,8 +230,6 @@ fn vertex(in: VertexInput) -> VertexOutput {
     let voxel_id = in.voxel_data & 0xffu;
     let ao_occlusion = (in.voxel_data >> 8u) & 0x3u;
     let ao = 1.0 - f32(ao_occlusion) / 3.0;
-    let base_color = voxel_color(voxel_id);
-    let base_rgb = base_color.rgb;
 
     let world_from_local = get_world_from_local(in.instance_index);
 
@@ -224,28 +248,13 @@ fn vertex(in: VertexInput) -> VertexOutput {
         in.instance_index,
     );
 
-    //Measure color brightness and saturation to detect white blocks
-    let max_c = max(base_rgb.r, max(base_rgb.g, base_rgb.b));
-    let min_c = min(base_rgb.r, min(base_rgb.g, base_rgb.b));
-    let saturation = max_c - min_c;
+    // Temporary data carrier:
+    // R = AO
+    // G = voxel ID / 255
+    // B = unused
+    // A = always opaque
 
-    // Whiteness = 1.0 for snow/white, 0.0 for saturated colors like grass
-    let whiteness = smoothstep(0.7, 1.0, min_c) * (1.0 - smoothstep(0.0, 0.2, saturation));
-
-    //shadow targets
-    let default_shadow = base_rgb * 0.15;
-    let snow_blue_shadow = vec3<f32>(0.25, 0.25, 1.25);
-
-    //shadow color based on whiteness
-    let shadow_color = mix(default_shadow, snow_blue_shadow, whiteness);
-
-    //AO value (e.g., pow exponent alters shadow sharpness/falloff)
-    let ao_curved = pow(clamp(ao, 0.0, 1.0), 1.2);
-
-    out.color = vec4<f32>(
-        mix(shadow_color, base_rgb, ao_curved),
-        base_color.a,
-    );
+    out.color = vec4<f32>(ao, f32(voxel_id) / 255.0, 0.0, 1.0);
 
     out.instance_index = in.instance_index;
 
@@ -258,32 +267,59 @@ fn fragment(
     @builtin(front_facing) is_front: bool,
 ) -> FragmentOutput {
 
+    let voxel_id = u32(round(in.color.g * 255.0));
+    let ao = clamp(in.color.r, 0.0, 1.0);
+    let base_color = voxel_color(voxel_id);
+
+    var pbr_vertex = in;
+    pbr_vertex.color = vec4<f32>(1.0);
+
     var pbr_input = pbr_input_from_standard_material(
-        in,
+        pbr_vertex,
         is_front,
     );
 
     let patch_tint = terrain_patch_tint(
-        pbr_input.material.base_color.rgb,
+        voxel_id,
         in.world_position.xyz,
         in.world_normal,
     );
 
-    pbr_input.material.base_color = vec4<f32>(
-        pbr_input.material.base_color.rgb * patch_tint,
-        pbr_input.material.base_color.a
-    );
+    pbr_input.material.base_color = vec4<f32>(base_color.rgb * patch_tint, 1.0);
 
     pbr_input.material.perceptual_roughness = 1.0;
-
-    pbr_input.material.base_color = alpha_discard(
-        pbr_input.material,
-        pbr_input.material.base_color,
-    );
+    pbr_input.material.metallic = 1.0;
+    pbr_input.material.reflectance = vec3<f32>(0.0);
 
     var out: FragmentOutput;
 
     out.color = apply_pbr_lighting(pbr_input);
+
+    let ao_visibility = pow(ao, 1.15); //1.0 - fully visible, 0.0 - not
+    let ao_amount = 1.0 - ao_visibility;
+
+    let default_ao_tint = vec3<f32>(0.28, 0.28, 0.28);
+    let grass_ao_tint = vec3<f32>(0.24, 0.32, 0.20);
+    let snow_ao_tint = vec3<f32>(0.32, 0.45, 0.77);
+    let sand_ao_tint = vec3<f32>(0.77, 0.45, 0.32);
+
+    var ao_tint = default_ao_tint;
+
+    if (voxel_id == VOXEL_GRASS) {
+        ao_tint = grass_ao_tint;
+    }
+
+    if (voxel_id == VOXEL_SNOW) {
+        ao_tint = snow_ao_tint;
+    }
+
+    if (voxel_id == VOXEL_SAND) {
+        ao_tint = sand_ao_tint;
+    }
+
+    let ao_multiplier = mix(vec3<f32>(1.0), ao_tint, ao_amount);
+
+    out.color = vec4<f32>(out.color.rgb * ao_multiplier, out.color.a);
 
     out.color = main_pass_post_lighting_processing(
         pbr_input,
@@ -314,7 +350,7 @@ fn fragment(
 
     out.color = vec4<f32>(
         mix(out.color.rgb, sky_color, fog_factor),
-        out.color.a,
+        1.0
     );
 
     return out;

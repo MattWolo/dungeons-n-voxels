@@ -9,6 +9,7 @@ use bevy::mesh::{Mesh, Mesh3d, PlaneMeshBuilder};
 use bevy::pbr::MeshMaterial3d;
 use bevy::prelude::{default, Commands, Component, ResMut, Transform, With, Query, Res, Without, SmoothStepCurve, MeshBuilder};
 use bevy_sky_gradient::prelude::SunDriverTag;
+use tracing::info_span;
 use crate::controls::MainCamera;
 use crate::generation::moon_material::{LunarClock, MoonDirection, MoonMaterial, MoonMaterialUniforms};
 use crate::player::Player;
@@ -71,6 +72,7 @@ pub fn update_moon_direction(
     sun_query: Query<&Transform, With<SunDriverTag>>,
     mut moon_dir: ResMut<MoonDirection>,
 ) {
+    let _span = info_span!("update_moon_direction").entered();
     if let Ok(sun_transform) = sun_query.single() {
         let dir = sun_transform.forward().normalize();
         moon_dir.dir = dir;
@@ -111,6 +113,7 @@ pub fn update_moon_phase_light(
     player_q: Query<&Transform, (With<Player>, Without<MoonSpotlight>)>,
     mut spot_q: Query<(&mut SpotLight, &mut Transform), (With<MoonSpotlight>, Without<Player>)>,
 ) {
+    let _span = info_span!("update_moon_phase_light").entered();
     let Ok(player_transform) = player_q.single() else { return; };
 
     let progress = moon_direction.night_progress;
@@ -145,6 +148,7 @@ pub fn apply_moon_direction(
     mut materials: ResMut<Assets<MoonMaterial>>,
     mut moon_query: Query<(&mut Transform, &MeshMaterial3d<MoonMaterial>), (With<Moon>, Without<MainCamera>)>,
 ) {
+    let _span = info_span!("apply_moon_direction").entered();
     let Ok(camera_transform) = main_camera_query.single() else { return };
     let Ok((mut moon_transform, material_handle)) = moon_query.single_mut() else { return };
 

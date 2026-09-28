@@ -48,6 +48,7 @@ impl Chunk {
         neighbor_pos_z: Option<&[VoxelType]>, // neighbor_north
         neighbor_neg_z: Option<&[VoxelType]>, // neighbor_south
     ) {
+        let _span = info_span!("build_padded_chunk").entered();
         padded.fill(VoxelType::Air);
 
         let own_stride_zy   = CHUNK_Z * CHUNK_Y;

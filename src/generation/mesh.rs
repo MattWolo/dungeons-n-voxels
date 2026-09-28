@@ -31,14 +31,6 @@ pub struct ChunkMeshScratch {
     pub face_keys_z: [[u16; CHUNK_X]; CHUNK_Z],
     pub face_keys_x: [[u16; CHUNK_X]; MESH_SECTION_Y],
 }
-
-pub const ATTRIBUTE_AO: MeshVertexAttribute =
-    MeshVertexAttribute::new(
-        "Vertex_AO",
-        8,
-        VertexFormat::Float32,
-    );
-
 pub const ATTRIBUTE_VOXEL_DATA: MeshVertexAttribute =
     MeshVertexAttribute::new(
         "Voxel_Data",
@@ -1270,6 +1262,7 @@ fn greedy_merge_rows<const D1: usize, const D2: usize>(
         [u16; 4],
     ),
 ) {
+    let _span = info_span!("greedy_merge_rows").entered();
     let same_material =
         |row: usize,
          col0: usize,

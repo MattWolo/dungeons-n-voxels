@@ -164,7 +164,7 @@ fn build_full_column(coord: IVec2, seed: u32, ) -> Vec<BuiltSectionMesh> {
 
         for section_index in 0..MESH_SECTION_COUNT {
             if let Some(section) = build_mesh_section_from_scratch(scratch, section_index) {
-                section_meshes.push((section));
+                section_meshes.push(section);
             }
         }
         section_meshes
@@ -198,6 +198,7 @@ fn emit_lod_quad(
 }
 
 fn build_far_column(coord: IVec2, seed: u32) -> Vec<BuiltSectionMesh> {
+    let _span = info_span!("build_far_column").entered();
     let mut cells = vec![
         LodCell {
             height: WORLD_MIN_Y,
@@ -538,6 +539,7 @@ fn unload_distant_chunks(
     mut loaded_chunks: ResMut<LoadedChunks>,
     mut commands: Commands,
 ) {
+    let _span = info_span!("unload_distant_chunks").entered();
     if let Ok(player_transform) = player_query.single() {
         let player_chunk_x = (player_transform.translation.x / CHUNK_X as f32).floor() as i32;
         let player_chunk_z = (player_transform.translation.z / CHUNK_Z as f32).floor() as i32;
@@ -672,6 +674,7 @@ fn setup_chunk_material(
     mut materials: ResMut<Assets<ChunkMaterialHandle>>,
     gradient_texture: Res<GradientTextureHandle>,
 ) {
+    let _span = info_span!("setup_chunk_material").entered();
     let handle = materials.add(ExtendedMaterial {
         base: StandardMaterial {
             perceptual_roughness: 0.9,

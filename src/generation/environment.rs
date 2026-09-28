@@ -1,4 +1,5 @@
 use bevy::camera::visibility::RenderLayers;
+use bevy::color::palettes::basic::WHITE;
 use bevy::light::light_consts::lux::{AMBIENT_DAYLIGHT};
 use bevy::prelude::*;
 use bevy_sky_gradient::ambient_driver::{AmbientDriverPlugin};
@@ -6,7 +7,7 @@ use bevy_sky_gradient::aurora::{AuroraPlugin, AuroraSettings};
 use bevy_sky_gradient::cycle::SkyCyclePlugin;
 use bevy_sky_gradient::gradient_driver::GradientDriverPlugin;
 use bevy_sky_gradient::plugin::{SkyPlugin, SkySettings};
-use bevy_sky_gradient::prelude::{SunDriverPlugin, SunSettings, SkyTimeSettings};
+use bevy_sky_gradient::prelude::{SunDriverPlugin, SunSettings, SkyTimeSettings, SunDriverTag};
 use bevy_sky_gradient::sky_texture::SkyTexturePluginSettings;
 use crate::generation::moon_generation::{apply_moon_direction, spawn_moon, update_moon_direction, update_moon_material_phase, update_moon_phase_light};
 use crate::generation::moon_material::{advance_lunar_clock, LunarClock, MoonDirection, MoonMaterial};
@@ -15,12 +16,11 @@ use crate::generation::voxel_material::{force_material_update};
 pub struct EnvironmentPlugin;
 impl Plugin for EnvironmentPlugin {
     fn build(&self, app: &mut App) {
-
         app
             .insert_resource(SkySettings {
                 ..default()
             })
-            .insert_resource(LunarClock{..default()})
+            .insert_resource(LunarClock { ..default() })
             .insert_resource(SkyTexturePluginSettings {
                 ..default()
             })
@@ -32,9 +32,9 @@ impl Plugin for EnvironmentPlugin {
                     .set_sun_driver(SunDriverPlugin {
                         spawn_default_sun_light: true,
                         sun_settings: SunSettings {
-                            illuminance: AMBIENT_DAYLIGHT,
-                            sun_strength: 1.5,
-                            sun_sharpness: 400.0,
+                            illuminance: 1_500.0,
+                            sun_strength: 1.0,
+                            sun_sharpness: 256.0,
                             sun_color: vec4(1.0, 1.0, 0.5, 1.0),
                             ..default()
                         },
@@ -46,12 +46,12 @@ impl Plugin for EnvironmentPlugin {
                             ..default()
                         },
                     })
-                        .set_cycle(SkyCyclePlugin {
+                    .set_cycle(SkyCyclePlugin {
                         sky_time_settings: SkyTimeSettings {
-                            day_time_sec: 10.0,
-                            night_time_sec: 30.0,
-                            sunrise_time_sec: 50.0,
-                            sunset_time_sec: 50.0,
+                            day_time_sec: 300.0,
+                            night_time_sec: 300.0,
+                            sunrise_time_sec: 60.0,
+                            sunset_time_sec: 60.0,
                         },
                         sky_time: Default::default(),
                     })
@@ -65,11 +65,27 @@ impl Plugin for EnvironmentPlugin {
             ))
             .add_systems(Update, force_material_update)
             .add_systems(Update, (
+                debug_lights,
                 advance_lunar_clock,
                 update_moon_direction,
                 apply_moon_direction,
                 update_moon_material_phase,
                 update_moon_phase_light,
-                ).chain());
+            ).chain());
+    }
+}
+
+fn debug_lights(
+    suns: Query<(Entity, Option<&Name>, &DirectionalLight, Option<&SunDriverTag>)>,
+) {
+
+    for (entity, name, light, tag) in &suns {
+        println!(
+            "light {:?} {:?}, illum={}, tagged={}",
+            entity,
+            name.map(|n| n.as_str()),
+            light.illuminance,
+            tag.is_some(),
+        );
     }
 }

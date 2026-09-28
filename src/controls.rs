@@ -1,5 +1,7 @@
 use bevy::camera_controller::free_camera::{FreeCamera, FreeCameraPlugin};
+use bevy::core_pipeline::prepass::DepthPrepass;
 use bevy::prelude::*;
+use bevy::render::occlusion_culling::OcclusionCulling;
 use third_person_camera as tp_cam;
 use crate::player::Player;
 
@@ -59,6 +61,8 @@ fn toggle_camera(
                 .insert((
                     tp_cam::ThirdPersonCamera::aimed_at(player_entity),
                     tp_cam::DampingFactor(5.0),
+                    DepthPrepass,
+                    OcclusionCulling,
                 ));
         } else {
             commands.entity(player_entity).insert(Disabled);
@@ -66,13 +70,17 @@ fn toggle_camera(
                 .entity(camera_entity)
                 .remove::<tp_cam::ThirdPersonCamera>()
                 .remove::<tp_cam::DampingFactor>()
-                .insert(FreeCamera{
-                    sensitivity: 0.2,
-                    friction: 25.0,
-                    walk_speed: 3.0,
-                    run_speed: 9.0,
-                    ..default()
-                });
+                .insert((
+                    DepthPrepass,
+                    OcclusionCulling,
+                    FreeCamera{
+                        sensitivity: 0.2,
+                        friction: 25.0,
+                        walk_speed: 3.0,
+                        run_speed: 9.0,
+                        ..default()
+                    }
+                ));
         }
     }
 }
