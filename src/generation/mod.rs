@@ -8,6 +8,7 @@ mod moon_material;
 mod voxel_material;
 mod moon_generation;
 mod LOD;
+pub mod templates;
 
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
