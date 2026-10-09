@@ -8,6 +8,7 @@ use bevy::{
         }},
     prelude::*};
 use std::collections::HashMap;
+use crate::generation::genomes::humanoid_genome::{scale_vertices_for_bone, HumanoidGenome};
 
 const CHARACTER_VOXEL_SIZE: f32 = 0.1;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -78,6 +79,10 @@ pub struct HumanoidJointTemplate {
     pub local_transform: Transform,
     pub parent: Option<usize>,
     pub animation_path: Vec<String>,
+}
+pub struct GeneratedHumanoid {
+    pub vertices: Vec<TemplateVertex>,
+    pub indices: Vec<u32>,
 }
 
 pub fn build_humanoid_template(
@@ -435,6 +440,15 @@ fn region_from_bone(bone: HumanoidBone) -> Option<BodyRegion> {
     }
 }
 
+pub fn joint_index_for_bone(
+    template: &HumanoidTemplate,
+    bone: HumanoidBone,
+) -> usize {
+    template.joints.iter().position(|joint| {
+        joint.bone == bone
+    }).expect("Humanoid bone missing from template")
+}
+
 fn rigid_joint_index(
     joints: [u16; 4],
     weights: [f32; 4],
@@ -675,6 +689,7 @@ fn collect_animation_paths(
     Ok(())
 }
 
+
 fn push_face(
     buffers: &mut MeshBuffers,
     corners: [Vec3; 4],
@@ -812,22 +827,25 @@ fn build_bone_to_joint_map(template: &HumanoidTemplate) -> HashMap<HumanoidBone,
     }).collect()
 }
 
-pub fn build_skinned_template_mesh(template: &HumanoidTemplate) -> Mesh {
+pub fn build_generated_skinned_mesh(
+    template: &HumanoidTemplate,
+    generated: &GeneratedHumanoid,
+) -> Mesh {
     let bone_to_joint = build_bone_to_joint_map(template);
-    let positions: Vec<[f32; 3]> = template.vertices.iter().map(|vertex| {
+    let positions: Vec<[f32; 3]> = generated.vertices.iter().map(|vertex| {
         vertex.position.to_array()
     }).collect();
-    let normals: Vec<[f32; 3]> = template.vertices.iter().map(|vertex| {
+    let normals: Vec<[f32; 3]> = generated.vertices.iter().map(|vertex| {
         vertex.normal.to_array()
     }).collect();
-    let colors: Vec<[f32; 4]> = template.vertices.iter().map(|vertex| {
+    let colors: Vec<[f32; 4]> = generated.vertices.iter().map(|vertex| {
         region_debug_color(vertex.region)
     }).collect();
-    let joint_indices: Vec<[u16; 4]> = template.vertices.iter().map(|vertex| {
+    let joint_indices: Vec<[u16; 4]> = generated.vertices.iter().map(|vertex| {
         let joint = *bone_to_joint.get(&vertex.bone).expect("Vertex bone missing from skeleton");
         [joint, 0, 0, 0]
     }).collect();
-    let joint_weights: Vec<[f32; 4]> = vec![[1.0, 0.0, 0.0, 0.0]; template.vertices.len()];
+    let joint_weights: Vec<[f32; 4]> = vec![[1.0, 0.0, 0.0, 0.0]; generated.vertices.len()];
 
     Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
@@ -835,8 +853,44 @@ pub fn build_skinned_template_mesh(template: &HumanoidTemplate) -> Mesh {
         .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, colors)
         .with_inserted_attribute(Mesh::ATTRIBUTE_JOINT_INDEX, VertexAttributeValues::Uint16x4(joint_indices))
         .with_inserted_attribute(Mesh::ATTRIBUTE_JOINT_WEIGHT, joint_weights)
-        .with_inserted_indices(Indices::U32(template.indices.clone()))
+        .with_inserted_indices(Indices::U32(generated.indices.clone()))
         .with_generated_skinned_mesh_bounds().expect("Failed to generate skinned mesh")
+}
+
+pub fn generate_humanoid(
+    template: &HumanoidTemplate,
+    genome: &HumanoidGenome,
+) -> GeneratedHumanoid {
+    let mut vertices = template.vertices.clone();
+    scale_vertices_for_bone(
+        template,
+        &mut vertices,
+        HumanoidBone::Chest,
+        Vec3::new(
+          genome.chest_width,
+          genome.chest_height,
+          genome.chest_depth,
+        ),
+    );
+    GeneratedHumanoid {
+        vertices,
+        indices: template.indices.clone(),
+    }
+}
+
+// for genome
+pub fn joint_bind_matrix(
+    template: &HumanoidTemplate,
+    joint_index: usize,
+) -> Mat4 {
+    let joint = &template.joints[joint_index];
+    let local = joint.local_transform.to_matrix();
+    match joint.parent {
+        Some(parent) => {
+            joint_bind_matrix(template, parent) * local
+        }
+        None => local,
+    }
 }
 
 pub fn build_humanoid_mesh(

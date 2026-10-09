@@ -16,15 +16,19 @@ use bevy::mesh::skinning::SkinnedMesh;
 use third_person_camera as tp_cam;
 use third_person_camera::TargetOffset;
 use crate::controls::MainCamera;
+use crate::generation::genomes::humanoid_genome::HumanoidGenome;
 use crate::generation::templates::humanoid::{
     build_humanoid_template,
     build_template_debug_mesh,
     HumanoidTemplate,
     HumanoidTemplateAsset,
     GeneratedHumanoidPreview,
-    build_skinned_template_mesh,
+    build_generated_skinned_mesh,
     GeneratedHumanoidJoint,
-    HumanoidBone};
+    HumanoidBone,
+    GeneratedHumanoid,
+    generate_humanoid
+};
 
 const HUMANOID_PATH: &str = "models/Humanoid_male_template.gltf";
 
@@ -269,8 +273,10 @@ fn spawn_skinned_humanoid_preview(
     let Some(template) = template else { return; };
     if !existing.is_empty() { return; };
     let Ok(player) = player_query.single() else { return; };
+    let genome = HumanoidGenome::from_seed(12345235);
 
-    let mesh_handle = meshes.add(build_skinned_template_mesh(&template));
+    let generated = generate_humanoid(&template,&genome);
+    let mesh_handle = meshes.add(build_generated_skinned_mesh(&template, &generated));
     let material_handle = materials.add(
         StandardMaterial {
             base_color: Color::WHITE,
